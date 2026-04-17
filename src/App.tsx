@@ -16,6 +16,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
 import { Textarea } from "@/components/ui/textarea";
+import { supabase } from "@/lib/supabase";
 
 const BRAND_OPTIONS = [
   "Agrale","Alfa Romeo","Aston Martin","Audi","BMW","BYD","Caoa Chery","Chevrolet",
@@ -104,6 +105,95 @@ type Expense = {
   data: string;
   descricao: string;
 };
+
+type VehicleRow = {
+  id: number;
+  placa: string;
+  marca: string;
+  modelo: string;
+  ano: number | null;
+  km: number | null;
+  cambio: string | null;
+  combustivel: string | null;
+  origem: string | null;
+  completo: string | null;
+  cor: string | null;
+  compra: number | null;
+  venda_prevista: number | null;
+  status: string | null;
+  data_compra: string | null;
+  observacao: string | null;
+  telefone_anuncio: string | null;
+  created_at: string;
+};
+
+type ExpenseRow = {
+  id: number;
+  veiculo_id: number;
+  categoria: string;
+  descricao: string | null;
+  valor: number;
+  data: string;
+  created_at: string;
+};
+
+type SaleRow = {
+  id: number;
+  veiculo_id: number;
+  valor_venda: number;
+  data_venda: string;
+  observacao: string | null;
+  created_at: string;
+};
+
+type WarrantyRow = {
+  id: number;
+  veiculo_id: number;
+  venda_id: number | null;
+  data_inicio: string;
+  data_fim: string;
+  status: string | null;
+  observacao: string | null;
+  created_at: string;
+};
+
+function mapVehicleRow(row: VehicleRow, salesMap: Map<number, SaleRow>, warrantyMap: Map<number, WarrantyRow>): Vehicle {
+  const sale = salesMap.get(row.id);
+  const warranty = warrantyMap.get(row.id);
+  return {
+    id: String(row.id),
+    placa: row.placa || "",
+    marca: row.marca || "",
+    modelo: row.modelo || "",
+    ano: Number(row.ano || 0),
+    km: Number(row.km || 0),
+    cambio: row.cambio || "Manual",
+    combustivel: row.combustivel || "Flex",
+    origem: row.origem || "Próprio",
+    completo: row.completo || "Completo",
+    cor: row.cor || "",
+    compra: Number(row.compra || 0),
+    vendaPrevista: sale?.valor_venda ? Number(sale.valor_venda) : Number(row.venda_prevista || 0),
+    status: ((row.status || "Em estoque") as Vehicle["status"]),
+    dataCompra: row.data_compra || todayISO(),
+    dataVenda: sale?.data_venda || undefined,
+    garantiaFim: warranty?.data_fim || undefined,
+    observacao: row.observacao || "",
+    telefoneAnuncio: row.telefone_anuncio || "",
+  };
+}
+
+function mapExpenseRow(row: ExpenseRow, vehicleMap: Map<number, VehicleRow>): Expense {
+  const vehicle = vehicleMap.get(row.veiculo_id);
+  return {
+    id: row.id,
+    placa: vehicle?.placa || "",
+    categoria: row.categoria || "Outros",
+    valor: Number(row.valor || 0),
+    data: row.data,
+    descricao: row.descricao || "",
+  };
+}
 
 const initialVehicles: Vehicle[] = [
   {
@@ -1149,25 +1239,47 @@ export default function App() {
   const [editingVehicle, setEditingVehicle] = useState<Vehicle | null>(null);
   const [selectedVehicle, setSelectedVehicle] = useState<Vehicle | null>(null);
 
-  const [vehicles, setVehicles] = useState<Vehicle[]>(() => {
-    if (typeof window === "undefined") return initialVehicles;
-    const saved = window.localStorage.getItem(storageKeys.vehicles);
-    return saved ? JSON.parse(saved) : initialVehicles;
-  });
+  const [vehicles, setVehicles] = useState<Vehicle[]>([]);
+  const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
-  const [expenses, setExpenses] = useState<Expense[]>(() => {
-    if (typeof window === "undefined") return initialExpenses;
-    const saved = window.localStorage.getItem(storageKeys.expenses);
-    return saved ? JSON.parse(saved) : initialExpenses;
-  });
+  async function loadData() {
+    setIsLoading(true);
+    try {
+      const [{ data: vehiclesRows, error: vehiclesError }, { data: expensesRows, error: expensesError }, { data: salesRows, error: salesError }, { data: warrantyRows, error: warrantyError }] = await Promise.all([
+        supabase.from("veiculos").select("*").order("created_at", { ascending: false }),
+        supabase.from("despesas").select("*").order("data", { ascending: false }),
+        supabase.from("vendas").select("*").order("data_venda", { ascending: false }),
+        supabase.from("garantias").select("*").order("data_fim", { ascending: false }),
+      ]);
+
+      if (vehiclesError) throw vehiclesError;
+      if (expensesError) throw expensesError;
+      if (salesError) throw salesError;
+      if (warrantyError) throw warrantyError;
+
+      const vehicleRows = (vehiclesRows || []) as VehicleRow[];
+      const expenseRows = (expensesRows || []) as ExpenseRow[];
+      const saleRows = (salesRows || []) as SaleRow[];
+      const guaranteeRows = (warrantyRows || []) as WarrantyRow[];
+
+      const vehicleMap = new Map<number, VehicleRow>(vehicleRows.map((row) => [row.id, row]));
+      const salesMap = new Map<number, SaleRow>(saleRows.map((row) => [row.veiculo_id, row]));
+      const warrantyMap = new Map<number, WarrantyRow>(guaranteeRows.map((row) => [row.veiculo_id, row]));
+
+      setVehicles(vehicleRows.map((row) => mapVehicleRow(row, salesMap, warrantyMap)));
+      setExpenses(expenseRows.map((row) => mapExpenseRow(row, vehicleMap)).filter((row) => row.placa));
+    } catch (error) {
+      console.error(error);
+      alert("Não foi possível carregar os dados do banco.");
+    } finally {
+      setIsLoading(false);
+    }
+  }
 
   useEffect(() => {
-    if (typeof window !== "undefined") window.localStorage.setItem(storageKeys.vehicles, JSON.stringify(vehicles));
-  }, [vehicles]);
-
-  useEffect(() => {
-    if (typeof window !== "undefined") window.localStorage.setItem(storageKeys.expenses, JSON.stringify(expenses));
-  }, [expenses]);
+    loadData();
+  }, []);
 
   const monthOptions = useMemo(() => {
     const allKeys = [
@@ -1226,62 +1338,163 @@ export default function App() {
     [filteredDashboardVehicles, filteredDashboardExpenses]
   );
 
-  const nextId = () => {
-    const max = vehicles.reduce((m, v) => Math.max(m, Number(String(v.id).replace("CAR", "")) || 0), 0);
-    return `CAR${String(max + 1).padStart(3, "0")}`;
-  };
 
-  const handleSaveVehicle = (form: Record<string, string>) => {
-    if (editingVehicle) {
-      setVehicles((prev) => prev.map((v) =>
-        v.id === editingVehicle.id ? {
-          ...v,
-          placa: form.placa, marca: form.marca, modelo: form.modelo,
-          ano: Number(form.ano || 0), km: Number(form.km || 0),
-          cambio: form.cambio, combustivel: form.combustivel,
-          origem: form.origem, completo: form.completo, cor: form.cor,
-          compra: Number(form.compra || 0), vendaPrevista: Number(form.vendaPrevista || 0),
-          dataCompra: form.dataCompra, observacao: form.observacao,
-          telefoneAnuncio: form.telefoneAnuncio,
-        } : v
-      ));
-      setEditingVehicle(null);
-    } else {
-      setVehicles((prev) => [...prev, {
-        ...form,
-        id: nextId(),
-        ano: Number(form.ano || 0), km: Number(form.km || 0),
-        compra: Number(form.compra || 0), vendaPrevista: Number(form.vendaPrevista || 0),
-        status: "Em estoque",
-      } as Vehicle]);
+  const handleSaveVehicle = async (form: Record<string, string>) => {
+    try {
+      const payload = {
+        placa: (form.placa || "").replace(/[^A-Za-z0-9]/g, "").toUpperCase(),
+        marca: form.marca,
+        modelo: form.modelo,
+        ano: Number(form.ano || 0),
+        km: Number(form.km || 0),
+        cambio: form.cambio,
+        combustivel: form.combustivel,
+        origem: form.origem,
+        completo: form.completo,
+        cor: form.cor,
+        compra: Number(form.compra || 0),
+        venda_prevista: Number(form.vendaPrevista || 0),
+        status: editingVehicle?.status || "Em estoque",
+        data_compra: form.dataCompra,
+        observacao: form.observacao || "",
+        telefone_anuncio: form.telefoneAnuncio || "",
+      };
+
+      if (editingVehicle) {
+        const { error } = await supabase.from("veiculos").update(payload).eq("id", Number(editingVehicle.id));
+        if (error) throw error;
+        setEditingVehicle(null);
+      } else {
+        const { error } = await supabase.from("veiculos").insert(payload);
+        if (error) throw error;
+      }
+
+      await loadData();
+      setActive("estoque");
+      setSelectedVehicle(null);
+    } catch (error) {
+      console.error(error);
+      alert("Não foi possível salvar o veículo.");
     }
-    setActive("estoque");
-    setSelectedVehicle(null);
   };
 
-  const handleSaveExpense = (form: Record<string, string>) =>
-    setExpenses((prev) => [{ id: Date.now(), ...form, valor: Number(form.valor || 0) } as Expense, ...prev]);
+  const handleSaveExpense = async (form: Record<string, string>) => {
+    try {
+      const vehicle = vehicles.find((v) => v.placa === form.placa);
+      if (!vehicle) throw new Error("Veículo não encontrado para essa placa.");
 
-  const handleRegisterSale = ({ placa, valorVenda, dataVenda }: { placa: string; valorVenda: string; dataVenda: string }) => {
-    setVehicles((prev) => prev.map((v) =>
-      v.placa === placa ? {
-        ...v,
-        status: "Vendido" as const,
-        vendaPrevista: Number(valorVenda || v.vendaPrevista),
-        dataVenda,
-        garantiaFim: addDays(dataVenda, 90),
-      } : v
-    ));
-    setActive("garantia");
-    setSelectedVehicle(null);
+      const { error } = await supabase.from("despesas").insert({
+        veiculo_id: Number(vehicle.id),
+        categoria: form.categoria,
+        descricao: form.descricao || "",
+        valor: Number(form.valor || 0),
+        data: form.data,
+      });
+
+      if (error) throw error;
+      await loadData();
+      setExpensePlatePrefill("");
+      setActive("consulta-custo");
+    } catch (error) {
+      console.error(error);
+      alert("Não foi possível salvar a despesa.");
+    }
   };
-const handleDeleteVehicle = (id: string) => {
-  setVehicles((prev) => prev.filter((v) => v.id !== id));
-  setExpenses((prev) => prev.filter((e) => {
-    const vehicle = vehicles.find(v => v.id === id);
-    return vehicle ? e.placa !== vehicle.placa : true;
-  }));
-};
+
+  const handleRegisterSale = async ({ placa, valorVenda, dataVenda }: { placa: string; valorVenda: string; dataVenda: string }) => {
+    try {
+      const vehicle = vehicles.find((v) => v.placa === placa);
+      if (!vehicle) throw new Error("Veículo não encontrado para venda.");
+
+      const garantiaFim = addDays(dataVenda, 90);
+
+      const { error: updateVehicleError } = await supabase
+        .from("veiculos")
+        .update({ status: "Vendido", venda_prevista: Number(valorVenda || vehicle.vendaPrevista) })
+        .eq("id", Number(vehicle.id));
+      if (updateVehicleError) throw updateVehicleError;
+
+      const { data: existingSale } = await supabase
+        .from("vendas")
+        .select("id")
+        .eq("veiculo_id", Number(vehicle.id))
+        .maybeSingle();
+
+      let vendaId: number | null = null;
+      if (existingSale?.id) {
+        vendaId = existingSale.id;
+        const { error } = await supabase.from("vendas").update({
+          valor_venda: Number(valorVenda || vehicle.vendaPrevista),
+          data_venda: dataVenda,
+          observacao: "Venda registrada pelo sistema",
+        }).eq("id", existingSale.id);
+        if (error) throw error;
+      } else {
+        const { data, error } = await supabase.from("vendas").insert({
+          veiculo_id: Number(vehicle.id),
+          valor_venda: Number(valorVenda || vehicle.vendaPrevista),
+          data_venda: dataVenda,
+          observacao: "Venda registrada pelo sistema",
+        }).select("id").single();
+        if (error) throw error;
+        vendaId = data.id;
+      }
+
+      const { data: existingWarranty } = await supabase
+        .from("garantias")
+        .select("id")
+        .eq("veiculo_id", Number(vehicle.id))
+        .maybeSingle();
+
+      if (existingWarranty?.id) {
+        const { error } = await supabase.from("garantias").update({
+          venda_id: vendaId,
+          data_inicio: dataVenda,
+          data_fim: garantiaFim,
+          status: "Ativa",
+          observacao: "Garantia de 90 dias",
+        }).eq("id", existingWarranty.id);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase.from("garantias").insert({
+          veiculo_id: Number(vehicle.id),
+          venda_id: vendaId,
+          data_inicio: dataVenda,
+          data_fim: garantiaFim,
+          status: "Ativa",
+          observacao: "Garantia de 90 dias",
+        });
+        if (error) throw error;
+      }
+
+      await loadData();
+      setActive("garantia");
+      setSelectedVehicle(null);
+    } catch (error) {
+      console.error(error);
+      alert("Não foi possível registrar a venda.");
+    }
+  };
+
+  const handleDeleteVehicle = async (id: string) => {
+    try {
+      const { error } = await supabase.from("veiculos").delete().eq("id", Number(id));
+      if (error) throw error;
+      await loadData();
+      setSelectedVehicle(null);
+    } catch (error) {
+      console.error(error);
+      alert("Não foi possível excluir o veículo.");
+    }
+  };
+
+  if (isLoading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-slate-100 text-slate-700">
+        Carregando dados do banco...
+      </div>
+    );
+  }
 
   if (!isAuthenticated) {
     return (
