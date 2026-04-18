@@ -16,7 +16,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
 import { Textarea } from "@/components/ui/textarea";
-import { supabase } from "@/lib/supabase";
+import { supabase } from "./lib/supabase";
 
 const BRAND_OPTIONS = [
   "Agrale","Alfa Romeo","Aston Martin","Audi","BMW","BYD","Caoa Chery","Chevrolet",
