@@ -37,7 +37,24 @@ const COMPLEMENTO_OPTIONS = ["Completo","Compl - Ar","Apenas AR","Basico"];
 const currency = (value: number | string | undefined | null) =>
   new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(Number(value || 0));
 
-const todayISO = () => new Date().toISOString().slice(0, 10);
+// Data de hoje no horário LOCAL (toISOString usa UTC e depois das 21h já devolvia o dia seguinte)
+const todayISO = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+};
+
+// Converte "AAAA-MM-DD" em dias absolutos, sem fuso horário
+const isoToDayNumber = (dateStr?: string) => {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(dateStr || "");
+  if (!m) return null;
+  return Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])) / 86400000;
+};
+
+// Exibe "AAAA-MM-DD" como "DD/MM/AAAA" sem passar por new Date (que mostrava o dia anterior)
+const formatDateBR = (dateStr?: string) => {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(dateStr || "");
+  return m ? `${m[3]}/${m[2]}/${m[1]}` : "";
+};
 
 const monthKey = (dateStr?: string) => {
   if (!dateStr) return "sem-data";
@@ -58,20 +75,22 @@ const monthLabel = (key: string) => {
   return new Intl.DateTimeFormat("pt-BR", { month: "long", year: "numeric" }).format(date);
 };
 
-const diffDays = (dateStr?: string, endDate: string | Date = new Date()) => {
-  if (!dateStr) return 0;
-  const start = new Date(dateStr);
-  const end = new Date(endDate);
-  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return 0;
-  return Math.max(0, Math.floor((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)));
+const diffDays = (dateStr?: string, endDate?: string) => {
+  const start = isoToDayNumber(dateStr);
+  const end = isoToDayNumber(endDate || todayISO());
+  if (start === null || end === null) return 0;
+  return Math.max(0, Math.round(end - start));
 };
 
 const addDays = (dateStr: string, days: number) => {
-  const d = new Date(dateStr);
-  if (Number.isNaN(d.getTime())) return todayISO();
-  d.setDate(d.getDate() + days);
-  return d.toISOString().slice(0, 10);
+  const start = isoToDayNumber(dateStr);
+  if (start === null) return todayISO();
+  return new Date((start + days) * 86400000).toISOString().slice(0, 10);
 };
+
+// Dias de pátio: para carro vendido, conta só até a data da venda
+const diasPatio = (v: { dataCompra: string; dataVenda?: string; status: string }) =>
+  diffDays(v.dataCompra, v.status === "Vendido" && v.dataVenda ? v.dataVenda : undefined);
 
 const patioBadge = (days: number) => {
   if (days > 30) return "bg-red-500 text-white";
@@ -92,7 +111,8 @@ type Vehicle = {
   completo: string;
   cor: string;
   compra: number;
-  vendaPrevista: number;
+  vendaPrevista: number; // preço pedido (nunca é sobrescrito pela venda)
+  valorVenda?: number;   // valor pelo qual o carro foi vendido (tabela vendas)
   status: "Em estoque" | "Vendido" | "Reservado";
   dataCompra: string;
   dataVenda?: string;
@@ -103,6 +123,7 @@ type Vehicle = {
 
 type Expense = {
   id: number;
+  veiculoId: number;
   placa: string;
   categoria: string;
   valor: number;
@@ -177,7 +198,8 @@ function mapVehicleRow(row: VehicleRow, salesMap: Map<number, SaleRow>, warranty
     completo: row.completo || "Completo",
     cor: row.cor || "",
     compra: Number(row.compra || 0),
-    vendaPrevista: sale?.valor_venda ? Number(sale.valor_venda) : Number(row.venda_prevista || 0),
+    vendaPrevista: Number(row.venda_prevista || 0),
+    valorVenda: sale?.valor_venda != null ? Number(sale.valor_venda) : undefined,
     status: ((row.status || "Em estoque") as Vehicle["status"]),
     dataCompra: row.data_compra || todayISO(),
     dataVenda: sale?.data_venda || undefined,
@@ -191,6 +213,7 @@ function mapExpenseRow(row: ExpenseRow, vehicleMap: Map<number, VehicleRow>): Ex
   const vehicle = vehicleMap.get(row.veiculo_id);
   return {
     id: row.id,
+    veiculoId: row.veiculo_id,
     placa: vehicle?.placa || "",
     categoria: row.categoria || "Outros",
     valor: Number(row.valor || 0),
@@ -198,40 +221,6 @@ function mapExpenseRow(row: ExpenseRow, vehicleMap: Map<number, VehicleRow>): Ex
     descricao: row.descricao || "",
   };
 }
-
-const initialVehicles: Vehicle[] = [
-  {
-    id: "CAR001", placa: "FKA-2A14", marca: "Fiat", modelo: "Uno Vivace", ano: 2016, km: 98500,
-    cambio: "Manual", combustivel: "Flex", origem: "Próprio", completo: "Completo", cor: "Branco",
-    compra: 32000, vendaPrevista: 38000, status: "Em estoque", dataCompra: "2026-02-10",
-    observacao: "Veículo revisado e pronto para anúncio.", telefoneAnuncio: "551633924002",
-  },
-  {
-    id: "CAR002", placa: "JXD-7M33", marca: "Ford", modelo: "EcoSport Freestyle", ano: 2019, km: 61200,
-    cambio: "Automático", combustivel: "Flex", origem: "Próprio", completo: "Completo", cor: "Prata",
-    compra: 68000, vendaPrevista: 79500, status: "Em estoque", dataCompra: "2026-01-14",
-    observacao: "Revisão em dia, chave reserva.", telefoneAnuncio: "551633924002",
-  },
-  {
-    id: "CAR003", placa: "MTR-4C09", marca: "Jeep", modelo: "Compass Longitude", ano: 2021, km: 65000,
-    cambio: "Automático", combustivel: "Diesel", origem: "Próprio", completo: "Completo", cor: "Preto",
-    compra: 112000, vendaPrevista: 120900, status: "Vendido", dataCompra: "2025-12-12",
-    dataVenda: "2026-01-15", garantiaFim: "2026-04-15",
-    observacao: "Venda concluída com garantia ativa.", telefoneAnuncio: "1633924002",
-  },
-];
-
-const initialExpenses: Expense[] = [
-  { id: 1, placa: "FKA-2A14", categoria: "Oficina", valor: 850, data: "2026-02-12", descricao: "Troca de óleo e filtros" },
-  { id: 2, placa: "FKA-2A14", categoria: "Documentação", valor: 320, data: "2026-02-15", descricao: "Transferência" },
-  { id: 3, placa: "JXD-7M33", categoria: "Funilaria", valor: 1450, data: "2026-01-29", descricao: "Reparo lateral" },
-  { id: 4, placa: "JXD-7M33", categoria: "Mecânica", valor: 680, data: "2026-01-19", descricao: "Revisão preventiva" },
-];
-
-const storageKeys = {
-  vehicles: "autoprime_vehicles_v5",
-  expenses: "autoprime_expenses_v5",
-};
 
 const statusClass: Record<string, string> = {
   "Em estoque": "bg-blue-50 text-blue-700 border-blue-200",
@@ -568,37 +557,72 @@ function VehicleForm({
   );
 }
 
-  function ExpensesPanel({
-    expenses,
-    vehicles,
-    onSaveExpense,
-    initialPlate,
-  }: {
-    expenses: Expense[];
-    vehicles: Vehicle[];
-    onSaveExpense: (data: Record<string, string>) => void;
-    initialPlate?: string;
-  }) {
-  const [form, setForm] = useState({
+function ExpensesPanel({
+  expenses,
+  vehicles,
+  onSaveExpense,
+  onDeleteExpense,
+  initialPlate,
+  editingExpense,
+  onStartEdit,
+  onClearEditing,
+}: {
+  expenses: Expense[];
+  vehicles: Vehicle[];
+  onSaveExpense: (data: Record<string, string>, id?: number) => Promise<boolean>;
+  onDeleteExpense: (expense: Expense) => void;
+  initialPlate?: string;
+  editingExpense: Expense | null;
+  onStartEdit: (expense: Expense) => void;
+  onClearEditing: () => void;
+}) {
+  const emptyForm = () => ({
     placa: initialPlate || "", categoria: TIPO_DESPESA_OPTIONS[0], valor: "", data: todayISO(), descricao: "",
   });
+  const [form, setForm] = useState(emptyForm);
+  const [aviso, setAviso] = useState("");
 
   useEffect(() => {
     if (initialPlate) setForm((prev) => ({ ...prev, placa: initialPlate }));
   }, [initialPlate]);
 
-  const save = () => {
-    if (!form.placa || !form.valor) return;
-    onSaveExpense(form);
-    setForm({ placa: initialPlate || "", categoria: TIPO_DESPESA_OPTIONS[0], valor: "", data: todayISO(), descricao: "" });
+  // Ao clicar em "Corrigir", carrega a despesa no formulário
+  useEffect(() => {
+    if (editingExpense) {
+      setForm({
+        placa: editingExpense.placa,
+        categoria: editingExpense.categoria,
+        valor: String(editingExpense.valor),
+        data: editingExpense.data.slice(0, 10),
+        descricao: editingExpense.descricao || "",
+      });
+      setAviso("");
+    }
+  }, [editingExpense]);
+
+  const cancelar = () => {
+    onClearEditing();
+    setForm(emptyForm());
+    setAviso("");
+  };
+
+  const save = async () => {
+    if (!form.placa) { setAviso("Selecione a placa do veículo."); return; }
+    if (!Number(form.valor)) { setAviso("Informe o valor da despesa."); return; }
+    setAviso("");
+    const ok = await onSaveExpense(form, editingExpense?.id);
+    if (ok) {
+      onClearEditing();
+      setForm(emptyForm());
+    }
   };
 
   return (
     <div className="grid gap-6 xl:grid-cols-[420px_1fr]">
-      <Card className="rounded-3xl border-0 shadow-md shadow-slate-200/60">
+      <Card className={`rounded-3xl border-0 shadow-md shadow-slate-200/60 ${editingExpense ? "ring-2 ring-amber-300" : ""}`}>
         <CardHeader>
-          <CardTitle>Lançar despesa</CardTitle>
-          <CardDescription>Controle de custos por veículo.</CardDescription>
+          <CardTitle>{editingExpense ? "Corrigir despesa" : "Lançar despesa"}</CardTitle>
+          <CardDescription>{editingExpense ? "Altere os campos e salve. A despesa original será substituída." : "Controle de custos por veículo."}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-2">
@@ -633,9 +657,15 @@ function VehicleForm({
             <Label>Descrição</Label>
             <Input data-testid="input-descricao-expense" value={form.descricao} onChange={(e) => setForm({ ...form, descricao: e.target.value })} />
           </div>
+          {aviso && <p className="text-sm font-medium text-red-600">{aviso}</p>}
           <Button data-testid="button-save-expense" onClick={save} className="w-full rounded-2xl bg-blue-600 hover:bg-blue-700">
-            Lançar despesa
+            {editingExpense ? "Salvar correção" : "Lançar despesa"}
           </Button>
+          {editingExpense && (
+            <Button variant="outline" onClick={cancelar} className="w-full rounded-2xl">
+              Cancelar correção
+            </Button>
+          )}
         </CardContent>
       </Card>
 
@@ -647,12 +677,31 @@ function VehicleForm({
           ) : (
             <div className="space-y-3">
               {expenses.map((e) => (
-                <div key={e.id} data-testid={`expense-row-${e.id}`} className="flex items-center justify-between rounded-2xl border border-slate-100 bg-slate-50 p-4">
-                  <div>
+                <div
+                  key={e.id}
+                  data-testid={`expense-row-${e.id}`}
+                  className={`flex items-center justify-between gap-4 rounded-2xl border p-4 ${editingExpense?.id === e.id ? "border-amber-300 bg-amber-50" : "border-slate-100 bg-slate-50"}`}
+                >
+                  <div className="min-w-0">
                     <p className="font-semibold">{e.placa} — {e.categoria}</p>
-                    <p className="text-sm text-slate-500">{new Intl.DateTimeFormat("pt-BR").format(new Date(e.data))} • {e.descricao}</p>
+                    <p className="text-sm text-slate-500">{formatDateBR(e.data)}{e.descricao ? ` • ${e.descricao}` : ""}</p>
                   </div>
-                  <p className="text-lg font-semibold text-red-500">{currency(e.valor)}</p>
+                  <div className="flex shrink-0 flex-col items-end gap-1">
+                    <p className="text-lg font-semibold text-red-500">{currency(e.valor)}</p>
+                    <div className="flex gap-3 text-sm font-medium">
+                      <button className="text-blue-600 hover:underline" onClick={() => { onStartEdit(e); window.scrollTo({ top: 0, behavior: "smooth" }); }}>
+                        Corrigir
+                      </button>
+                      <button
+                        className="text-red-600 hover:underline"
+                        onClick={() => {
+                          if (confirm(`Excluir a despesa de ${currency(e.valor)} (${e.categoria}) do veículo ${e.placa}?`)) onDeleteExpense(e);
+                        }}
+                      >
+                        Excluir
+                      </button>
+                    </div>
+                  </div>
                 </div>
               ))}
             </div>
@@ -678,8 +727,8 @@ function CostLookupPanel({ vehicles, expenses }: { vehicles: Vehicle[]; expenses
   const vehicleExpenses = useMemo(() => expenses.filter((e) => e.placa === selectedPlate), [expenses, selectedPlate]);
   const totalExpenses = vehicleExpenses.reduce((sum, item) => sum + Number(item.valor || 0), 0);
   const totalCost = Number(selectedVehicle?.compra || 0) + totalExpenses;
-  const lucroPrevisto = Number(selectedVehicle?.vendaPrevista || 0) - totalCost;
-  const margem = totalCost > 0 ? (lucroPrevisto / totalCost) * 100 : 0;
+  const vendido = selectedVehicle?.status === "Vendido" && selectedVehicle?.valorVenda != null;
+  const lucroPrevisto = Number((vendido ? selectedVehicle?.valorVenda : selectedVehicle?.vendaPrevista) || 0) - totalCost;
 
   return (
     <div className="grid gap-6 xl:grid-cols-[380px_1fr]">
@@ -713,8 +762,11 @@ function CostLookupPanel({ vehicles, expenses }: { vehicles: Vehicle[]; expenses
               <div className="flex justify-between text-sm"><span className="text-slate-500">Despesas</span><span className="font-medium text-red-500">+{currency(totalExpenses)}</span></div>
               <div className="border-t" />
               <div className="flex justify-between text-base font-bold"><span>Custo total</span><span>{currency(totalCost)}</span></div>
-              <div className="flex justify-between text-sm"><span className="text-slate-500">Venda prevista</span><span className="font-medium">{currency(selectedVehicle.vendaPrevista)}</span></div>
-              <div className="flex justify-between text-base font-bold"><span>Lucro previsto</span><span className={lucroPrevisto >= 0 ? "text-emerald-600" : "text-red-600"}>{currency(lucroPrevisto)}</span></div>
+              <div className="flex justify-between text-sm"><span className="text-slate-500">{vendido ? "Preço pedido" : "Venda prevista"}</span><span className="font-medium">{currency(selectedVehicle.vendaPrevista)}</span></div>
+              {vendido && (
+                <div className="flex justify-between text-sm"><span className="text-slate-500">Vendido por</span><span className="font-medium">{currency(selectedVehicle.valorVenda)}</span></div>
+              )}
+              <div className="flex justify-between text-base font-bold"><span>{vendido ? "Lucro realizado" : "Lucro previsto"}</span><span className={lucroPrevisto >= 0 ? "text-emerald-600" : "text-red-600"}>{currency(lucroPrevisto)}</span></div>
 
             </div>
           )}
@@ -730,7 +782,7 @@ function CostLookupPanel({ vehicles, expenses }: { vehicles: Vehicle[]; expenses
             <div key={e.id} className="mb-3 flex items-center justify-between rounded-2xl border border-slate-100 bg-slate-50 p-4">
               <div>
                 <p className="font-semibold">{e.categoria}</p>
-                <p className="text-sm text-slate-500">{new Intl.DateTimeFormat("pt-BR").format(new Date(e.data))} • {e.descricao}</p>
+                <p className="text-sm text-slate-500">{formatDateBR(e.data)} • {e.descricao}</p>
               </div>
               <p className="text-lg font-semibold text-red-500">{currency(e.valor)}</p>
             </div>
@@ -810,7 +862,7 @@ function SalesPanel({
 }
 
 function VehicleDetailPage({
-  vehicle, expenses, onBack, onEditVehicle, onOpenExpense, onOpenSale, onDeleteVehicle,
+  vehicle, expenses, onBack, onEditVehicle, onOpenExpense, onOpenSale, onDeleteVehicle, onUndoSale, onEditExpense,
 }: {
   vehicle: Vehicle;
   expenses: Expense[];
@@ -819,11 +871,27 @@ function VehicleDetailPage({
   onOpenExpense: (plate: string) => void;
   onOpenSale: (plate: string) => void;
   onDeleteVehicle: (id: string) => void;
+  onUndoSale: (vehicle: Vehicle) => void;
+  onEditExpense: (expense: Expense) => void;
 }) {
   const vehicleExpenses = expenses.filter((e) => e.placa === vehicle.placa);
   const totalExpenses = vehicleExpenses.reduce((sum, e) => sum + Number(e.valor || 0), 0);
   const totalCost = Number(vehicle.compra || 0) + totalExpenses;
-  const margemPrevista = Number(vehicle.vendaPrevista || 0) - totalCost;
+  const vendido = vehicle.status === "Vendido" && vehicle.valorVenda != null;
+  const valorBase = vendido ? Number(vehicle.valorVenda) : Number(vehicle.vendaPrevista || 0);
+  const lucro = valorBase - totalCost;
+  const desconto = vendido ? Number(vehicle.vendaPrevista || 0) - Number(vehicle.valorVenda) : 0;
+
+  const confirmarExclusao = () => {
+    const partes = [
+      vehicleExpenses.length > 0 && `${vehicleExpenses.length} despesa(s)`,
+      vehicle.status === "Vendido" && "a venda e a garantia",
+    ].filter(Boolean).join(" e ");
+    const msg = `Excluir ${vehicle.marca} ${vehicle.modelo} (${vehicle.placa})?` +
+      (partes ? `\n\nTambém serão apagadas: ${partes}.` : "") +
+      "\n\nEssa ação não pode ser desfeita.";
+    if (confirm(msg)) onDeleteVehicle(vehicle.id);
+  };
 
   return (
     <div className="space-y-6">
@@ -833,17 +901,23 @@ function VehicleDetailPage({
           <p className="mt-1 text-slate-500">{vehicle.placa} • {vehicle.status}</p>
         </div>
         <div className="flex flex-wrap gap-2">
-<Button 
-  variant="destructive" 
-  className="rounded-2xl"
-  onClick={() => {
-    if (confirm("Deseja excluir este veículo?")) {
-      onDeleteVehicle(vehicle.id);
-    }
-  }}
->
-  Excluir
-</Button>
+          <Button variant="destructive" className="rounded-2xl" onClick={confirmarExclusao}>
+            Excluir
+          </Button>
+          {vehicle.status === "Vendido" && (
+            <Button
+              variant="outline"
+              className="rounded-2xl"
+              data-testid="button-undo-sale"
+              onClick={() => {
+                if (confirm(`Desfazer a venda de ${vehicle.marca} ${vehicle.modelo} (${vehicle.placa})?\n\nO carro volta para o estoque e a venda e a garantia são apagadas.`)) {
+                  onUndoSale(vehicle);
+                }
+              }}
+            >
+              Desfazer venda
+            </Button>
+          )}
           <Button variant="outline" className="rounded-2xl" onClick={onBack} data-testid="button-back-stock">
             Voltar para estoque
           </Button>
@@ -891,7 +965,7 @@ function VehicleDetailPage({
                 </div>
                 <div>
                   <div className="mb-2 flex items-center gap-2 text-slate-500"><CalendarClock className="h-4 w-4" /> Data da Compra</div>
-                  <p className="text-2xl font-semibold">{new Intl.DateTimeFormat("pt-BR").format(new Date(vehicle.dataCompra))}</p>
+                  <p className="text-2xl font-semibold">{formatDateBR(vehicle.dataCompra)}</p>
                 </div>
               </div>
               <div className="space-y-8">
@@ -933,12 +1007,26 @@ function VehicleDetailPage({
               </div>
               <div className="border-t" />
               <div className="flex items-center justify-between text-xl">
-                <span className="text-slate-500">Venda Prevista</span>
+                <span className="text-slate-500">{vendido ? "Preço pedido" : "Venda Prevista"}</span>
                 <span className="font-semibold">{currency(vehicle.vendaPrevista)}</span>
               </div>
+              {vendido && (
+                <>
+                  <div className="flex items-center justify-between text-xl">
+                    <span className="text-slate-500">Vendido por</span>
+                    <span className="font-semibold">{currency(vehicle.valorVenda)}</span>
+                  </div>
+                  {desconto !== 0 && (
+                    <div className="flex items-center justify-between text-base">
+                      <span className="text-slate-500">{desconto > 0 ? "Desconto dado" : "Vendido acima do pedido"}</span>
+                      <span className={desconto > 0 ? "font-semibold text-amber-600" : "font-semibold text-emerald-600"}>{currency(Math.abs(desconto))}</span>
+                    </div>
+                  )}
+                </>
+              )}
               <div className="flex items-center justify-between text-2xl font-bold">
-                <span>Margem Prevista</span>
-                <span className="text-emerald-600">{currency(margemPrevista)}</span>
+                <span>{vendido ? "Lucro realizado" : lucro >= 0 ? "Lucro previsto" : "Prejuízo previsto"}</span>
+                <span className={lucro >= 0 ? "text-emerald-600" : "text-red-600"}>{currency(lucro)}</span>
               </div>
             </CardContent>
           </Card>
@@ -957,9 +1045,14 @@ function VehicleDetailPage({
                     <div className="flex items-start justify-between gap-4">
                       <div>
                         <p className="text-xl font-semibold">{item.categoria}</p>
-                        <p className="text-sm text-slate-500">{new Intl.DateTimeFormat("pt-BR").format(new Date(item.data))}</p>
+                        <p className="text-sm text-slate-500">{formatDateBR(item.data)}{item.descricao ? ` • ${item.descricao}` : ""}</p>
                       </div>
-                      <p className="text-xl font-semibold text-red-500">{currency(item.valor)}</p>
+                      <div className="text-right">
+                        <p className="text-xl font-semibold text-red-500">{currency(item.valor)}</p>
+                        <button className="text-sm font-medium text-blue-600 hover:underline" onClick={() => onEditExpense(item)}>
+                          Corrigir
+                        </button>
+                      </div>
                     </div>
                   </div>
                 )) : (
@@ -990,9 +1083,9 @@ function StockPage({ vehicles, onSelectVehicle }: { vehicles: Vehicle[]; onSelec
       .filter((v) => {
         if (!dateFrom && !dateTo) return true;
         if (!v.dataCompra) return false;
-        const current = new Date(v.dataCompra);
-        const fromOk = !dateFrom || current >= new Date(dateFrom);
-        const toOk = !dateTo || current <= new Date(dateTo);
+        const current = v.dataCompra.slice(0, 10);
+        const fromOk = !dateFrom || current >= dateFrom;
+        const toOk = !dateTo || current <= dateTo;
         return fromOk && toOk;
       })
       .sort((a, b) => a.marca.localeCompare(b.marca, "pt-BR") || a.modelo.localeCompare(b.modelo, "pt-BR"));
@@ -1034,7 +1127,7 @@ function StockPage({ vehicles, onSelectVehicle }: { vehicles: Vehicle[]; onSelec
         <CardContent>
           <div className="space-y-5">
             {filtered.map((v) => {
-              const days = diffDays(v.dataCompra);
+              const days = diasPatio(v);
               return (
                 <button
                   key={v.id}
@@ -1056,17 +1149,33 @@ function StockPage({ vehicles, onSelectVehicle }: { vehicles: Vehicle[]; onSelec
                       <p className="mt-1 text-xs text-slate-500">{v.cambio} • {v.combustivel}</p>
                     </div>
                     <div>
-                      <p className="text-xs text-slate-500">Venda prevista</p>
-                      <p className="text-xl font-bold text-slate-950">{currency(v.vendaPrevista)}</p>
-                      <p className="mt-1 text-xs text-slate-500">Compra: {currency(v.compra)}</p>
+                      {v.status === "Vendido" && v.valorVenda != null ? (
+                        <>
+                          <p className="text-xs text-slate-500">Vendido por</p>
+                          <p className="text-xl font-bold text-slate-950">{currency(v.valorVenda)}</p>
+                          <p className="mt-1 text-xs text-slate-500">Pedido: {currency(v.vendaPrevista)} • Compra: {currency(v.compra)}</p>
+                        </>
+                      ) : (
+                        <>
+                          <p className="text-xs text-slate-500">Venda prevista</p>
+                          <p className="text-xl font-bold text-slate-950">{currency(v.vendaPrevista)}</p>
+                          <p className="mt-1 text-xs text-slate-500">Compra: {currency(v.compra)}</p>
+                        </>
+                      )}
                     </div>
                     <div className="flex flex-col items-end gap-2">
                       <Badge className={`${statusClass[v.status]} rounded-2xl border px-3 py-1 text-xs font-medium`}>
                         {v.status}
                       </Badge>
-                      <Badge className={`${patioBadge(days)} rounded-2xl px-3 py-1 text-xs font-medium`}>
-                        {days}d pátio
-                      </Badge>
+                      {v.status === "Vendido" ? (
+                        <Badge className="rounded-2xl border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-600">
+                          Vendido em {days}d
+                        </Badge>
+                      ) : (
+                        <Badge className={`${patioBadge(days)} rounded-2xl px-3 py-1 text-xs font-medium`}>
+                          {days}d pátio
+                        </Badge>
+                      )}
                     </div>
                   </div>
                 </button>
@@ -1254,6 +1363,7 @@ export default function App() {
   const [expensePlatePrefill, setExpensePlatePrefill] = useState("");
   const [salePlatePrefill, setSalePlatePrefill] = useState("");
   const [editingVehicle, setEditingVehicle] = useState<Vehicle | null>(null);
+  const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
   const [selectedVehicle, setSelectedVehicle] = useState<Vehicle | null>(null);
 
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
@@ -1341,8 +1451,9 @@ export default function App() {
     const margemMedia = vendaPrevistaCompletos > 0 ? (lucroPrevisto / vendaPrevistaCompletos) * 100 : 0;
     const garantiasAtivas = soldVehicles.filter((v) => v.garantiaFim && v.garantiaFim >= todayISO()).length;
 
-    const totalVendido = soldInPeriod.reduce((sum, v) => sum + Number(v.vendaPrevista || 0), 0);
-    const lucroRealizado = soldInPeriod.reduce((sum, v) => sum + Number(v.vendaPrevista || 0) - custoVeiculo(v), 0);
+    const valorVendido = (v: Vehicle) => Number(v.valorVenda ?? v.vendaPrevista ?? 0);
+    const totalVendido = soldInPeriod.reduce((sum, v) => sum + valorVendido(v), 0);
+    const lucroRealizado = soldInPeriod.reduce((sum, v) => sum + valorVendido(v) - custoVeiculo(v), 0);
     const margemRealizada = totalVendido > 0 ? (lucroRealizado / totalVendido) * 100 : 0;
 
     return {
@@ -1404,27 +1515,52 @@ export default function App() {
     }
   };
 
-  const handleSaveExpense = async (form: Record<string, string>) => {
+  const handleSaveExpense = async (form: Record<string, string>, id?: number) => {
     try {
       const vehicle = vehicles.find((v) => v.placa === form.placa);
       if (!vehicle) throw new Error("Veículo não encontrado para essa placa.");
 
-      const { error } = await supabase.from("despesas").insert({
+      const payload = {
         veiculo_id: Number(vehicle.id),
         categoria: form.categoria,
         descricao: form.descricao || "",
         valor: Number(form.valor || 0),
         data: form.data,
-      });
+      };
+      const { error } = id
+        ? await supabase.from("despesas").update(payload).eq("id", id)
+        : await supabase.from("despesas").insert(payload);
 
       if (error) throw error;
       await loadData();
       setExpensePlatePrefill("");
-      setActive("consulta-custo");
+      setEditingExpense(null);
+      // Correção fica na tela de despesas; lançamento novo segue para a consulta de custo, como antes
+      if (!id) setActive("consulta-custo");
+      return true;
     } catch (error) {
       console.error(error);
-      alert("Não foi possível salvar a despesa.");
+      alert(id ? "Não foi possível salvar a correção da despesa." : "Não foi possível salvar a despesa.");
+      return false;
     }
+  };
+
+  const handleDeleteExpense = async (expense: Expense) => {
+    try {
+      const { error } = await supabase.from("despesas").delete().eq("id", expense.id);
+      if (error) throw error;
+      if (editingExpense?.id === expense.id) setEditingExpense(null);
+      await loadData();
+    } catch (error) {
+      console.error(error);
+      alert("Não foi possível excluir a despesa.");
+    }
+  };
+
+  const handleStartEditExpense = (expense: Expense) => {
+    setEditingExpense(expense);
+    setSelectedVehicle(null);
+    setActive("despesas");
   };
 
   const handleRegisterSale = async ({ placa, valorVenda, dataVenda }: { placa: string; valorVenda: string; dataVenda: string }) => {
@@ -1436,7 +1572,7 @@ export default function App() {
 
       const { error: updateVehicleError } = await supabase
         .from("veiculos")
-        .update({ status: "Vendido", venda_prevista: Number(valorVenda || vehicle.vendaPrevista) })
+        .update({ status: "Vendido" })
         .eq("id", Number(vehicle.id));
       if (updateVehicleError) throw updateVehicleError;
 
@@ -1502,15 +1638,40 @@ export default function App() {
     }
   };
 
+  // Desfazer venda: apaga garantia e venda e devolve o carro ao estoque
+  const handleUndoSale = async (vehicle: Vehicle) => {
+    try {
+      const vid = Number(vehicle.id);
+      const { error: gErr } = await supabase.from("garantias").delete().eq("veiculo_id", vid);
+      if (gErr) throw gErr;
+      const { error: sErr } = await supabase.from("vendas").delete().eq("veiculo_id", vid);
+      if (sErr) throw sErr;
+      const { error: vErr } = await supabase.from("veiculos").update({ status: "Em estoque" }).eq("id", vid);
+      if (vErr) throw vErr;
+      await loadData();
+      setSelectedVehicle(null);
+      setActive("estoque");
+    } catch (error) {
+      console.error(error);
+      alert("Não foi possível desfazer a venda. Recarregue a página e confira o status do veículo.");
+    }
+  };
+
+  // Excluir carro: apaga antes tudo que depende dele (garantia, venda, despesas)
   const handleDeleteVehicle = async (id: string) => {
     try {
-      const { error } = await supabase.from("veiculos").delete().eq("id", Number(id));
+      const vid = Number(id);
+      for (const tabela of ["garantias", "vendas", "despesas"] as const) {
+        const { error } = await supabase.from(tabela).delete().eq("veiculo_id", vid);
+        if (error) throw error;
+      }
+      const { error } = await supabase.from("veiculos").delete().eq("id", vid);
       if (error) throw error;
       await loadData();
       setSelectedVehicle(null);
     } catch (error) {
       console.error(error);
-      alert("Não foi possível excluir o veículo.");
+      alert("Não foi possível excluir o veículo. Recarregue a página e confira se algo foi apagado.");
     }
   };
 
@@ -1538,6 +1699,7 @@ export default function App() {
           setActive={(tab) => {
             setActive(tab);
             if (tab !== "estoque") setSelectedVehicle(null);
+            if (tab !== "despesas") setEditingExpense(null);
           }}
           user={user}
           onLogout={() => setIsAuthenticated(false)}
@@ -1714,7 +1876,11 @@ export default function App() {
               expenses={expenses}
               vehicles={vehicles}
               onSaveExpense={handleSaveExpense}
+              onDeleteExpense={handleDeleteExpense}
               initialPlate={expensePlatePrefill}
+              editingExpense={editingExpense}
+              onStartEdit={handleStartEditExpense}
+              onClearEditing={() => setEditingExpense(null)}
             />
           )}
 
@@ -1743,6 +1909,8 @@ export default function App() {
               onEditVehicle={(vehicle) => { setEditingVehicle(vehicle); setActive("cadastro"); }}
               onOpenExpense={(plate) => { setExpensePlatePrefill(plate); setActive("despesas"); }}
               onOpenSale={(plate) => { setSalePlatePrefill(plate); setActive("vendas"); }}
+              onUndoSale={handleUndoSale}
+              onEditExpense={handleStartEditExpense}
             />
           )}
 
