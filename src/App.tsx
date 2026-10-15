@@ -345,7 +345,11 @@ function AppSidebar({
           <button className="flex w-full items-center gap-3 rounded-2xl px-4 py-3 text-left text-slate-300 hover:bg-slate-900">
             <Bell className="h-5 w-5" /><span className="font-medium">Notificações</span>
           </button>
-          <button className="flex w-full items-center gap-3 rounded-2xl px-4 py-3 text-left text-slate-300 hover:bg-slate-900">
+          <button
+            data-testid="nav-configuracoes"
+            onClick={() => setActive("configuracoes")}
+            className={`flex w-full items-center gap-3 rounded-2xl px-4 py-3 text-left transition-all ${active === "configuracoes" ? "bg-blue-600 text-white shadow-lg shadow-blue-600/20" : "text-slate-300 hover:bg-slate-900"}`}
+          >
             <Settings className="h-5 w-5" /><span className="font-medium">Configurações</span>
           </button>
           <button
@@ -1338,6 +1342,70 @@ function ShowroomPanel({ stockVehicles, expenseByPlate }: { stockVehicles: Vehic
   );
 }
 
+// Cópia de segurança: baixa todas as tabelas do banco num arquivo .json
+// (permite restaurar os dados se algo for apagado ou alterado por engano)
+function SettingsPanel() {
+  const [status, setStatus] = useState<"idle" | "loading" | "done" | "error">("idle");
+  const [resumo, setResumo] = useState("");
+
+  const baixarBackup = async () => {
+    setStatus("loading");
+    try {
+      const tabelas = ["veiculos", "despesas", "vendas", "garantias"] as const;
+      const dados: Record<string, unknown[]> = {};
+      for (const t of tabelas) {
+        const { data, error } = await supabase.from(t).select("*").order("id", { ascending: true });
+        if (error) throw error;
+        dados[t] = data || [];
+      }
+      const agora = new Date();
+      const carimbo = `${todayISO()}_${String(agora.getHours()).padStart(2, "0")}h${String(agora.getMinutes()).padStart(2, "0")}`;
+      const conteudo = JSON.stringify({ sistema: "Auto Prime", gerado_em: agora.toISOString(), tabelas: dados }, null, 2);
+      const url = URL.createObjectURL(new Blob([conteudo], { type: "application/json" }));
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `backup-autoprime_${carimbo}.json`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      setResumo(`${dados.veiculos.length} veículos, ${dados.despesas.length} despesas, ${dados.vendas.length} vendas e ${dados.garantias.length} garantias.`);
+      setStatus("done");
+    } catch (error) {
+      console.error(error);
+      setStatus("error");
+    }
+  };
+
+  return (
+    <Card className="rounded-3xl border-0 shadow-md shadow-slate-200/60">
+      <CardHeader>
+        <CardTitle>Configurações</CardTitle>
+        <CardDescription>Ferramentas de segurança dos dados da loja.</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <div className="rounded-3xl border border-slate-200 bg-slate-50 p-5">
+          <p className="font-semibold">Cópia de segurança</p>
+          <p className="mt-1 max-w-2xl text-sm text-slate-500">
+            Baixa um arquivo com todos os veículos, despesas, vendas e garantias. Faça uma cópia antes de cada atualização do sistema
+            e guarde o arquivo: com ele dá para recuperar qualquer informação apagada ou alterada por engano.
+          </p>
+          <Button
+            data-testid="button-backup"
+            onClick={baixarBackup}
+            disabled={status === "loading"}
+            className="mt-4 rounded-2xl bg-blue-600 hover:bg-blue-700"
+          >
+            {status === "loading" ? "Gerando cópia..." : "Baixar cópia de segurança"}
+          </Button>
+          {status === "done" && <p className="mt-3 text-sm font-medium text-emerald-700">Cópia baixada: {resumo}</p>}
+          {status === "error" && <p className="mt-3 text-sm font-medium text-red-600">Não foi possível gerar a cópia. Verifique a internet e tente de novo.</p>}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 function AnuncioPanel() {
   return (
     <Card className="rounded-3xl border-0 shadow-md shadow-slate-200/60">
@@ -1916,6 +1984,7 @@ export default function App() {
 
           {active === "garantia" && <WarrantyPanel soldVehicles={soldVehicles} />}
           {active === "anuncio" && <AnuncioPanel />}
+          {active === "configuracoes" && <SettingsPanel />}
           {active === "mostruario" && <ShowroomPanel stockVehicles={stockVehicles} expenseByPlate={expenseByPlate} />}
         </main>
       </div>
