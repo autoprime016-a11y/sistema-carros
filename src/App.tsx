@@ -1075,7 +1075,8 @@ function VehicleDetailPage({
 
 function StockPage({ vehicles, onSelectVehicle }: { vehicles: Vehicle[]; onSelectVehicle: (vehicle: Vehicle) => void }) {
   const [query, setQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState("Todos");
+  // Ao abrir o Estoque, mostra por padrão só os carros que estão no pátio
+  const [statusFilter, setStatusFilter] = useState("Em estoque");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
 

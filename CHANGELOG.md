@@ -32,6 +32,10 @@ Dados apagados por engano só voltam pela **cópia de segurança** (Configuraç�
 
 ---
 
+## v1.1.1 — 15/10/2026
+- A tela de **Estoque** abre com o filtro **"Em estoque"** já selecionado (antes abria em "Todos").
+  Para ver vendidos ou todos, é só trocar o filtro.
+
 ## v1.1.0 — 15/10/2026
 Correções do dashboard, datas, vendas e despesas.
 
