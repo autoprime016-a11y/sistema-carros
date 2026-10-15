@@ -41,6 +41,10 @@ const todayISO = () => new Date().toISOString().slice(0, 10);
 
 const monthKey = (dateStr?: string) => {
   if (!dateStr) return "sem-data";
+  // Datas "AAAA-MM-DD" são lidas direto do texto para não sofrer com o fuso horário
+  // (new Date("2026-10-01") vira 30/09 no horário de Brasília).
+  const iso = /^(\d{4})-(\d{2})/.exec(dateStr);
+  if (iso) return `${iso[1]}-${iso[2]}`;
   const d = new Date(dateStr);
   if (Number.isNaN(d.getTime())) return "sem-data";
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
@@ -1294,48 +1298,57 @@ export default function App() {
   const soldVehicles = useMemo(() => vehicles.filter((v) => v.status === "Vendido"), [vehicles]);
   const expenseByPlate = (placa: string) => expenses.filter((e) => e.placa === placa).reduce((sum, e) => sum + Number(e.valor), 0);
 
-  const filteredDashboardVehicles = useMemo(() => {
-    if (dashboardMonth === "todos") return vehicles;
-    return vehicles.filter((v) => monthKey(v.dataCompra) === dashboardMonth || monthKey(v.dataVenda) === dashboardMonth);
-  }, [vehicles, dashboardMonth]);
+  // Custo de cada carro = compra + TODAS as despesas dele (independente do mês da despesa)
+  const custoTotalPorPlaca = useMemo(() => {
+    const map = new Map<string, number>();
+    expenses.forEach((e) => map.set(e.placa, (map.get(e.placa) || 0) + Number(e.valor || 0)));
+    return map;
+  }, [expenses]);
+  const custoVeiculo = (v: Vehicle) => Number(v.compra || 0) + (custoTotalPorPlaca.get(v.placa) || 0);
+  const cadastroIncompleto = (v: Vehicle) => !Number(v.compra) || !Number(v.vendaPrevista);
 
-  const filteredDashboardExpenses = useMemo(() => {
-    if (dashboardMonth === "todos") return expenses;
-    return expenses.filter((e) => monthKey(e.data) === dashboardMonth);
-  }, [expenses, dashboardMonth]);
+  // Vendas do período: filtradas pela DATA DA VENDA
+  const soldInPeriod = useMemo(() => {
+    if (dashboardMonth === "todos") return soldVehicles;
+    return soldVehicles.filter((v) => monthKey(v.dataVenda) === dashboardMonth);
+  }, [soldVehicles, dashboardMonth]);
 
   const totals = useMemo(() => {
-    const stockFiltered = filteredDashboardVehicles.filter((v) => v.status === "Em estoque");
-    const soldFiltered = filteredDashboardVehicles.filter((v) => v.status === "Vendido");
-    const expenseByPlateFiltered = (placa: string) =>
-      filteredDashboardExpenses.filter((e) => e.placa === placa).reduce((sum, e) => sum + Number(e.valor), 0);
-
-    const valorEstoque = stockFiltered.reduce((sum, v) => sum + Number(v.vendaPrevista || 0), 0);
-    const custoEstoque = stockFiltered.reduce((sum, v) => sum + Number(v.compra || 0) + expenseByPlateFiltered(v.placa), 0);
-    const despesasEmEstoque = stockFiltered.reduce((sum, v) => sum + expenseByPlateFiltered(v.placa), 0);
-    const patioMedio = stockFiltered.length
-      ? stockFiltered.reduce((sum, v) => sum + diffDays(v.dataCompra), 0) / stockFiltered.length
+    // Estoque: sempre a foto ATUAL do pátio (o filtro de mês não se aplica)
+    const completos = stockVehicles.filter((v) => !cadastroIncompleto(v));
+    const valorEstoque = stockVehicles.reduce((sum, v) => sum + Number(v.vendaPrevista || 0), 0);
+    const custoEstoque = stockVehicles.reduce((sum, v) => sum + custoVeiculo(v), 0);
+    const despesasEmEstoque = stockVehicles.reduce((sum, v) => sum + (custoTotalPorPlaca.get(v.placa) || 0), 0);
+    const patioMedio = stockVehicles.length
+      ? stockVehicles.reduce((sum, v) => sum + diffDays(v.dataCompra), 0) / stockVehicles.length
       : 0;
-    const lucroPrevisto = valorEstoque - custoEstoque;
-    const margemMedia = custoEstoque > 0 ? (lucroPrevisto / custoEstoque) * 100 : 0;
-    const garantiasAtivas = soldFiltered.filter((v) => v.garantiaFim && new Date(v.garantiaFim) >= new Date()).length;
-    const totalVendido = soldFiltered.reduce((sum, v) => sum + Number(v.vendaPrevista || 0), 0);
+    // Lucro e margem previstos só com carros de cadastro completo (compra e venda prevista preenchidas)
+    const vendaPrevistaCompletos = completos.reduce((sum, v) => sum + Number(v.vendaPrevista || 0), 0);
+    const lucroPrevisto = completos.reduce((sum, v) => sum + Number(v.vendaPrevista || 0) - custoVeiculo(v), 0);
+    const margemMedia = vendaPrevistaCompletos > 0 ? (lucroPrevisto / vendaPrevistaCompletos) * 100 : 0;
+    const garantiasAtivas = soldVehicles.filter((v) => v.garantiaFim && v.garantiaFim >= todayISO()).length;
+
+    const totalVendido = soldInPeriod.reduce((sum, v) => sum + Number(v.vendaPrevista || 0), 0);
+    const lucroRealizado = soldInPeriod.reduce((sum, v) => sum + Number(v.vendaPrevista || 0) - custoVeiculo(v), 0);
+    const margemRealizada = totalVendido > 0 ? (lucroRealizado / totalVendido) * 100 : 0;
 
     return {
       valorEstoque, custoEstoque, despesasEmEstoque, patioMedio, lucroPrevisto,
-      margemMedia, garantiasAtivas, totalVendido,
-      stockCount: stockFiltered.length, soldCount: soldFiltered.length,
-      totalVehicles: filteredDashboardVehicles.length,
+      margemMedia, garantiasAtivas, totalVendido, lucroRealizado, margemRealizada,
+      stockCount: stockVehicles.length, soldCount: soldInPeriod.length,
+      totalVehicles: vehicles.length,
+      incompletos: stockVehicles.filter(cadastroIncompleto),
     };
-  }, [filteredDashboardVehicles, filteredDashboardExpenses]);
+  }, [stockVehicles, soldVehicles, soldInPeriod, vehicles, custoTotalPorPlaca]);
 
+  // Ranking: só carros EM ESTOQUE e com cadastro completo
   const ranking = useMemo(() =>
-    filteredDashboardVehicles.map((v) => {
-      const custo = Number(v.compra || 0) + filteredDashboardExpenses.filter((e) => e.placa === v.placa).reduce((sum, e) => sum + Number(e.valor || 0), 0);
-      const lucro = Number(v.vendaPrevista || 0) - custo;
-      return { ...v, lucro };
-    }).sort((a, b) => b.lucro - a.lucro).slice(0, 3),
-    [filteredDashboardVehicles, filteredDashboardExpenses]
+    stockVehicles
+      .filter((v) => !cadastroIncompleto(v))
+      .map((v) => ({ ...v, lucro: Number(v.vendaPrevista || 0) - custoVeiculo(v) }))
+      .sort((a, b) => b.lucro - a.lucro)
+      .slice(0, 3),
+    [stockVehicles, custoTotalPorPlaca]
   );
 
 
@@ -1542,8 +1555,9 @@ export default function App() {
               <Card className="rounded-3xl border-0 shadow-md shadow-slate-200/60 ring-2 ring-blue-300 bg-blue-50">
                 <CardContent className="flex flex-col gap-3 p-5 md:flex-row md:items-center md:justify-between">
                   <div>
-                    <p className="text-sm font-medium text-blue-700">Filtro do dashboard por mês</p>
+                    <p className="text-sm font-medium text-blue-700">Filtro de vendas por mês</p>
                     <p className="text-lg font-semibold text-slate-900">{monthLabel(dashboardMonth)}</p>
+                    <p className="text-xs text-slate-500">O estoque mostra sempre a situação atual do pátio.</p>
                   </div>
                   <div className="w-full md:w-[280px]">
                     <Select value={dashboardMonth} onValueChange={setDashboardMonth}>
@@ -1558,13 +1572,46 @@ export default function App() {
                 </CardContent>
               </Card>
 
-              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-6">
-                <StatCard title="Veículos em estoque" value={totals.stockCount} subtitle="Disponíveis no filtro" icon={Car} />
-                <StatCard title="Valor total de estoque" value={currency(totals.valorEstoque)} subtitle="Base de venda prevista" icon={TrendingUp} />
-                <StatCard title="Lucro previsto" value={currency(totals.lucroPrevisto)} subtitle="Venda prevista menos custo atual" icon={CircleDollarSign} />
-                <StatCard title="Margem média" value={`${totals.margemMedia.toFixed(1)}%`} subtitle="Rentabilidade do estoque" icon={AlertTriangle} />
-                <StatCard title="Em garantia" value={totals.garantiasAtivas} subtitle="Veículos em garantia" icon={ShieldCheck} />
-                <StatCard title="Total vendido" value={currency(totals.totalVendido)} subtitle="Vendas do período" icon={DollarSign} />
+              {totals.incompletos.length > 0 && (
+                <Card className="rounded-3xl border-0 bg-amber-50 shadow-md shadow-slate-200/60 ring-2 ring-amber-300">
+                  <CardContent className="p-5">
+                    <div className="flex items-center gap-2 font-semibold text-amber-800">
+                      <AlertTriangle className="h-5 w-5" />
+                      {totals.incompletos.length === 1 ? "1 carro em estoque com cadastro incompleto" : `${totals.incompletos.length} carros em estoque com cadastro incompleto`}
+                    </div>
+                    <p className="mt-1 text-sm text-amber-800">Ficam fora do lucro previsto e do ranking até serem corrigidos.</p>
+                    <ul className="mt-3 space-y-1 text-sm text-amber-900">
+                      {totals.incompletos.map((v) => (
+                        <li key={v.id}>
+                          <strong>{v.placa}</strong> {v.marca} {v.modelo} — falta{" "}
+                          {[!Number(v.compra) && "valor de compra", !Number(v.vendaPrevista) && "venda prevista"].filter(Boolean).join(" e ")}
+                        </li>
+                      ))}
+                    </ul>
+                  </CardContent>
+                </Card>
+              )}
+
+              <div>
+                <p className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500">Estoque atual</p>
+                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+                  <StatCard title="Veículos em estoque" value={totals.stockCount} subtitle={`Tempo médio de pátio: ${Math.round(totals.patioMedio)} dias`} icon={Car} />
+                  <StatCard title="Capital investido" value={currency(totals.custoEstoque)} subtitle="Compra + despesas dos carros no pátio" icon={Wrench} />
+                  <StatCard title="Valor de venda do estoque" value={currency(totals.valorEstoque)} subtitle="Soma das vendas previstas" icon={TrendingUp} />
+                  <StatCard title="Lucro previsto" value={currency(totals.lucroPrevisto)} subtitle="Venda prevista menos custo total" icon={CircleDollarSign} />
+                  <StatCard title="Margem prevista" value={`${totals.margemMedia.toFixed(1)}%`} subtitle="Lucro sobre o preço de venda" icon={Target} />
+                </div>
+              </div>
+
+              <div>
+                <p className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500">Vendas — {monthLabel(dashboardMonth)}</p>
+                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+                  <StatCard title="Carros vendidos" value={totals.soldCount} subtitle="Pela data da venda" icon={CheckCircle2} />
+                  <StatCard title="Total vendido" value={currency(totals.totalVendido)} subtitle="Faturamento das vendas" icon={DollarSign} />
+                  <StatCard title="Lucro realizado" value={currency(totals.lucroRealizado)} subtitle="Venda menos compra e despesas" icon={CircleDollarSign} />
+                  <StatCard title="Margem realizada" value={`${totals.margemRealizada.toFixed(1)}%`} subtitle="Lucro sobre o preço de venda" icon={Target} />
+                  <StatCard title="Em garantia" value={totals.garantiasAtivas} subtitle="Garantias vigentes hoje" icon={ShieldCheck} />
+                </div>
               </div>
 
               <div className="grid gap-6 xl:grid-cols-[1.5fr_1fr]">
@@ -1594,7 +1641,7 @@ export default function App() {
                         <Trophy className="h-5 w-5 text-amber-500" />
                         <div>
                           <p className="text-sm text-slate-500">Ranking de lucro previsto</p>
-                          <p className="text-lg font-semibold">Top 3 veículos</p>
+                          <p className="text-lg font-semibold">Top 3 do estoque</p>
                         </div>
                       </div>
                       <div className="space-y-3">
@@ -1689,10 +1736,6 @@ export default function App() {
           {active === "garantia" && <WarrantyPanel soldVehicles={soldVehicles} />}
           {active === "anuncio" && <AnuncioPanel />}
           {active === "mostruario" && <ShowroomPanel stockVehicles={stockVehicles} expenseByPlate={expenseByPlate} />}
-
-          <div className="mt-6 rounded-3xl border border-dashed border-slate-300 bg-white/70 p-4 text-sm text-slate-500">
-            Para uso real na loja, esta interface pode ser publicada e conectada a um banco de dados online.
-          </div>
         </main>
       </div>
     </div>
