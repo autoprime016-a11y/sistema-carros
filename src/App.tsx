@@ -1083,8 +1083,14 @@ function StockPage({ vehicles, onSelectVehicle }: { vehicles: Vehicle[]; onSelec
 }
 
 function WarrantyPanel({ soldVehicles }: { soldVehicles: Vehicle[] }) {
-  const active = soldVehicles.filter((v) => v.garantiaFim && new Date(v.garantiaFim) >= new Date());
-  const closed = soldVehicles.filter((v) => v.garantiaFim && new Date(v.garantiaFim) < new Date());
+  // Compara as datas como texto (AAAA-MM-DD) para a garantia que vence hoje ainda contar como ativa
+  const hoje = todayISO();
+  const diasRestantes = (fim?: string) => diffDays(hoje, fim);
+  const dataBR = (iso?: string) => (iso ? iso.slice(0, 10).split("-").reverse().join("/") : "");
+  const active = soldVehicles
+    .filter((v) => v.garantiaFim && v.garantiaFim >= hoje)
+    .sort((a, b) => diasRestantes(a.garantiaFim) - diasRestantes(b.garantiaFim));
+  const closed = soldVehicles.filter((v) => v.garantiaFim && v.garantiaFim < hoje);
 
   return (
     <div className="grid gap-6 xl:grid-cols-[1fr_1fr]">
@@ -1094,16 +1100,23 @@ function WarrantyPanel({ soldVehicles }: { soldVehicles: Vehicle[] }) {
           {active.length === 0 && <p className="text-sm text-slate-500">Nenhuma garantia ativa.</p>}
           {active.map((v) => {
             const total = 90;
-            const used = total - Math.max(0, diffDays(todayISO(), v.garantiaFim));
+            const restantes = diasRestantes(v.garantiaFim);
+            const used = total - restantes;
             const progress = Math.max(0, Math.min(100, (used / total) * 100));
+            const corDias = restantes <= 15 ? "text-amber-600" : "text-slate-900";
             return (
               <div key={v.id} data-testid={`warranty-active-${v.id}`} className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
                 <div className="flex items-center justify-between gap-3">
                   <div>
                     <p className="font-semibold">{v.marca} {v.modelo}</p>
-                    <p className="text-sm text-slate-500">{v.placa} • garantia até {v.garantiaFim}</p>
+                    <p className="text-sm text-slate-500">{v.placa} • garantia até {dataBR(v.garantiaFim)}</p>
                   </div>
-                  <Badge className="border border-emerald-200 bg-emerald-500/15 text-emerald-700">Ativa</Badge>
+                  <div className="flex shrink-0 flex-col items-end gap-1">
+                    <p className={`text-sm font-semibold ${corDias}`}>
+                      {restantes === 0 ? "Vence hoje" : restantes === 1 ? "Falta 1 dia" : `Faltam ${restantes} dias`}
+                    </p>
+                    <Badge className="border border-emerald-200 bg-emerald-500/15 text-emerald-700">Ativa</Badge>
+                  </div>
                 </div>
                 <div className="mt-4"><Progress value={progress} /></div>
               </div>
@@ -1121,7 +1134,7 @@ function WarrantyPanel({ soldVehicles }: { soldVehicles: Vehicle[] }) {
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <p className="font-semibold">{v.marca} {v.modelo}</p>
-                  <p className="text-sm text-slate-500">{v.placa} • encerrada em {v.garantiaFim}</p>
+                  <p className="text-sm text-slate-500">{v.placa} • encerrada em {dataBR(v.garantiaFim)}</p>
                 </div>
                 <Badge className="border border-slate-200 bg-slate-500/15 text-slate-700">Encerrada</Badge>
               </div>
