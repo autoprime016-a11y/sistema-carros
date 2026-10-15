@@ -6,8 +6,8 @@ Cada publicação do sistema ganha um número de versão. A versão no ar aparec
 - **1.x.0** (muda o número do meio): melhorias e correções novas.
 - **1.1.x** (muda o último número): ajuste pequeno numa versão já publicada.
 
-No GitHub, cada versão tem uma marcação (tag) com o mesmo nome, por exemplo `v1.1.0`,
-apontando exatamente para o código daquela versão.
+No GitHub e na Vercel, cada versão é identificada pelo título da publicação, que começa com o número
+(por exemplo "v1.1.0 — ..."). A versão 1.0.0 é a publicação "Update App.tsx" de 17/04/2026 (código 188046b).
 
 ---
 
