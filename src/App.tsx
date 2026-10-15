@@ -17,6 +17,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
 import { Textarea } from "@/components/ui/textarea";
 import { supabase } from "./lib/supabase";
+import { APP_VERSION, VERSION_HISTORY } from "./version";
 
 const BRAND_OPTIONS = [
   "Agrale","Alfa Romeo","Aston Martin","Audi","BMW","BYD","Caoa Chery","Chevrolet",
@@ -312,6 +313,7 @@ function AppSidebar({
           <div>
             <h1 className="text-xl font-bold">Auto Prime</h1>
             <p className="text-sm text-slate-400">Sistema Web Completo</p>
+            <p className="text-xs text-slate-500" data-testid="app-version">Versão {APP_VERSION}</p>
           </div>
         </div>
       </div>
@@ -1400,6 +1402,31 @@ function SettingsPanel() {
           </Button>
           {status === "done" && <p className="mt-3 text-sm font-medium text-emerald-700">Cópia baixada: {resumo}</p>}
           {status === "error" && <p className="mt-3 text-sm font-medium text-red-600">Não foi possível gerar a cópia. Verifique a internet e tente de novo.</p>}
+        </div>
+
+        <div className="mt-6 rounded-3xl border border-slate-200 bg-slate-50 p-5">
+          <p className="font-semibold">Versões do sistema</p>
+          <p className="mt-1 text-sm text-slate-500">
+            Versão no ar: <strong className="text-slate-900">{APP_VERSION}</strong>. Para voltar a uma versão anterior, use a lista de publicações da Vercel.
+          </p>
+          <div className="mt-4 space-y-3">
+            {VERSION_HISTORY.map((v) => (
+              <div key={v.versao} className="rounded-2xl border border-slate-200 bg-white p-4">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="font-semibold">
+                    Versão {v.versao} <span className="font-normal text-slate-500">• {formatDateBR(v.data)}</span>
+                  </p>
+                  {v.versao === APP_VERSION && (
+                    <Badge className="border border-emerald-200 bg-emerald-500/15 text-emerald-700">No ar</Badge>
+                  )}
+                </div>
+                <p className="mt-1 text-sm text-slate-700">{v.titulo}</p>
+                <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-slate-500">
+                  {v.itens.map((item) => <li key={item}>{item}</li>)}
+                </ul>
+              </div>
+            ))}
+          </div>
         </div>
       </CardContent>
     </Card>
