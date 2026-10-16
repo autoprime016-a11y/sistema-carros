@@ -32,6 +32,10 @@ Dados apagados por engano só voltam pela **cópia de segurança** (Configuraç�
 
 ---
 
+## v1.1.2 — 16/10/2026
+- Novas categorias na lista de despesas: **Troca de óleo**, **Combustível** e **Comissão**.
+  As despesas já lançadas como "Outros" ou em outra categoria não mudam sozinhas; dá para corrigir uma a uma pelo botão "Corrigir".
+
 ## v1.1.1 — 15/10/2026
 - A tela de **Estoque** abre com o filtro **"Em estoque"** já selecionado (antes abria em "Todos").
   Para ver vendidos ou todos, é só trocar o filtro.

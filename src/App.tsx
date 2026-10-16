@@ -30,7 +30,7 @@ const BRAND_OPTIONS = [
 
 const TIPO_DESPESA_OPTIONS = [
   "Oficina","Funilaria","Documentação","Lavagem","Elétrica","Pneus","Acessórios",
-  "Mecânica","Regularização","Outros",
+  "Mecânica","Troca de óleo","Combustível","Comissão","Regularização","Outros",
 ];
 
 const COMPLEMENTO_OPTIONS = ["Completo","Compl - Ar","Apenas AR","Basico"];
