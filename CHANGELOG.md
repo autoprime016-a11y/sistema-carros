@@ -32,6 +32,11 @@ Dados apagados por engano só voltam pela **cópia de segurança** (Configuraç�
 
 ---
 
+## v1.2.0 — 20/10/2026
+- No dashboard, o card **"Carros vendidos"** agora abre a **lista dos carros vendidos** no período do filtro,
+  com placa, data da venda, dias de pátio, valor e lucro de cada um (mais recentes primeiro).
+- Tocar num carro da lista abre a ficha completa; o botão **"Voltar para o dashboard"** retorna à tela anterior.
+
 ## v1.1.2 — 16/10/2026
 - Novas categorias na lista de despesas: **Troca de óleo**, **Combustível** e **Comissão**.
   As despesas já lançadas como "Outros" ou em outra categoria não mudam sozinhas; dá para corrigir uma a uma pelo botão "Corrigir".

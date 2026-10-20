@@ -367,17 +367,86 @@ function AppSidebar({
   );
 }
 
-function StatCard({ title, value, subtitle, icon: Icon }: { title: string; value: string | number; subtitle: string; icon: React.ComponentType<{ className?: string }> }) {
+function StatCard({
+  title, value, subtitle, icon: Icon, onClick, active = false,
+}: {
+  title: string;
+  value: string | number;
+  subtitle: string;
+  icon: React.ComponentType<{ className?: string }>;
+  onClick?: () => void;
+  active?: boolean;
+}) {
+  const conteudo = (
+    <CardContent className="p-5">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-sm text-slate-500">{title}</p>
+          <p className="mt-2 text-2xl font-bold text-slate-950">{value}</p>
+          <p className="mt-1 text-xs text-slate-500">{subtitle}</p>
+          {onClick && (
+            <p className="mt-2 text-xs font-semibold text-blue-600">{active ? "Ocultar lista ▲" : "Ver carros ▼"}</p>
+          )}
+        </div>
+        <div className="rounded-2xl bg-blue-600 p-3 text-white"><Icon className="h-5 w-5" /></div>
+      </div>
+    </CardContent>
+  );
+  if (!onClick) {
+    return <Card className="rounded-3xl border-0 shadow-md shadow-slate-200/60">{conteudo}</Card>;
+  }
   return (
-    <Card className="rounded-3xl border-0 shadow-md shadow-slate-200/60">
-      <CardContent className="p-5">
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <p className="text-sm text-slate-500">{title}</p>
-            <p className="mt-2 text-2xl font-bold text-slate-950">{value}</p>
-            <p className="mt-1 text-xs text-slate-500">{subtitle}</p>
-          </div>
-          <div className="rounded-2xl bg-blue-600 p-3 text-white"><Icon className="h-5 w-5" /></div>
+    <button type="button" onClick={onClick} aria-expanded={active} className="text-left">
+      <Card className={`h-full rounded-3xl border-0 shadow-md shadow-slate-200/60 transition hover:ring-2 hover:ring-blue-300 ${active ? "ring-2 ring-blue-500" : ""}`}>
+        {conteudo}
+      </Card>
+    </button>
+  );
+}
+
+// Lista dos carros vendidos no período do filtro do dashboard
+function SoldList({
+  vehicles, custoVeiculo, onSelect,
+}: {
+  vehicles: Vehicle[];
+  custoVeiculo: (v: Vehicle) => number;
+  onSelect: (v: Vehicle) => void;
+}) {
+  const ordenados = [...vehicles].sort((a, b) => (b.dataVenda || "").localeCompare(a.dataVenda || ""));
+  return (
+    <Card className="mt-4 rounded-3xl border-0 shadow-md shadow-slate-200/60" data-testid="sold-list">
+      <CardHeader>
+        <CardTitle>Carros vendidos</CardTitle>
+        <CardDescription>Toque num carro para abrir a ficha completa.</CardDescription>
+      </CardHeader>
+      <CardContent>
+        {ordenados.length === 0 && <p className="text-sm text-slate-500">Nenhum carro vendido neste período.</p>}
+        <div className="space-y-3">
+          {ordenados.map((v) => {
+            const valor = Number(v.valorVenda ?? v.vendaPrevista ?? 0);
+            const lucro = valor - custoVeiculo(v);
+            return (
+              <button
+                key={v.id}
+                type="button"
+                onClick={() => onSelect(v)}
+                className="flex w-full flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-left transition hover:border-blue-300 hover:bg-white"
+              >
+                <div className="min-w-0">
+                  <p className="font-semibold">{v.marca} {v.modelo}</p>
+                  <p className="text-sm text-slate-500">
+                    {v.placa} • vendido em {formatDateBR(v.dataVenda)} • {diasPatio(v)} dias no pátio
+                  </p>
+                </div>
+                <div className="text-right">
+                  <p className="font-semibold">{currency(valor)}</p>
+                  <p className={`text-sm font-medium ${lucro >= 0 ? "text-emerald-600" : "text-red-600"}`}>
+                    {lucro >= 0 ? "Lucro" : "Prejuízo"} {currency(lucro)}
+                  </p>
+                </div>
+              </button>
+            );
+          })}
         </div>
       </CardContent>
     </Card>
@@ -868,8 +937,9 @@ function SalesPanel({
 }
 
 function VehicleDetailPage({
-  vehicle, expenses, onBack, onEditVehicle, onOpenExpense, onOpenSale, onDeleteVehicle, onUndoSale, onEditExpense,
+  vehicle, expenses, onBack, onEditVehicle, onOpenExpense, onOpenSale, onDeleteVehicle, onUndoSale, onEditExpense, backLabel,
 }: {
+  backLabel?: string;
   vehicle: Vehicle;
   expenses: Expense[];
   onBack: () => void;
@@ -925,7 +995,7 @@ function VehicleDetailPage({
             </Button>
           )}
           <Button variant="outline" className="rounded-2xl" onClick={onBack} data-testid="button-back-stock">
-            Voltar para estoque
+            {backLabel || "Voltar para estoque"}
           </Button>
           <Button variant="outline" className="rounded-2xl" onClick={() => onEditVehicle(vehicle)} data-testid="button-edit-vehicle">
             <Pencil className="mr-2 h-4 w-4" /> Editar
@@ -1456,6 +1526,8 @@ export default function App() {
   const [user, setUser] = useState({ name: "Administrador Auto Prime", email: "contato@autoprime.com.br" });
   const [active, setActive] = useState("dashboard");
   const [dashboardMonth, setDashboardMonth] = useState("todos");
+  const [showSoldList, setShowSoldList] = useState(false);
+  const [voltarParaDashboard, setVoltarParaDashboard] = useState(false);
   const [expensePlatePrefill, setExpensePlatePrefill] = useState("");
   const [salePlatePrefill, setSalePlatePrefill] = useState("");
   const [editingVehicle, setEditingVehicle] = useState<Vehicle | null>(null);
@@ -1796,6 +1868,7 @@ export default function App() {
             setActive(tab);
             if (tab !== "estoque") setSelectedVehicle(null);
             if (tab !== "despesas") setEditingExpense(null);
+            setVoltarParaDashboard(false);
           }}
           user={user}
           onLogout={() => setIsAuthenticated(false)}
@@ -1809,7 +1882,7 @@ export default function App() {
               </div>
               <Tabs
                 value={["dashboard","estoque","mostruario"].includes(active) ? active : undefined}
-                onValueChange={(tab) => { setActive(tab); if (tab !== "estoque") setSelectedVehicle(null); }}
+                onValueChange={(tab) => { setActive(tab); if (tab !== "estoque") setSelectedVehicle(null); setVoltarParaDashboard(false); }}
                 className="w-full xl:w-auto"
               >
                 <TabsList className="grid w-full grid-cols-3 rounded-2xl xl:w-[420px]">
@@ -1877,12 +1950,19 @@ export default function App() {
               <div>
                 <p className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500">Vendas — {monthLabel(dashboardMonth)}</p>
                 <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
-                  <StatCard title="Carros vendidos" value={totals.soldCount} subtitle="Pela data da venda" icon={CheckCircle2} />
+                  <StatCard title="Carros vendidos" value={totals.soldCount} subtitle="Pela data da venda" icon={CheckCircle2} onClick={() => setShowSoldList((x) => !x)} active={showSoldList} />
                   <StatCard title="Total vendido" value={currency(totals.totalVendido)} subtitle="Faturamento das vendas" icon={DollarSign} />
                   <StatCard title="Lucro realizado" value={currency(totals.lucroRealizado)} subtitle="Venda menos compra e despesas" icon={CircleDollarSign} />
                   <StatCard title="Margem realizada" value={`${totals.margemRealizada.toFixed(1)}%`} subtitle="Lucro sobre o preço de venda" icon={Target} />
                   <StatCard title="Em garantia" value={totals.garantiasAtivas} subtitle="Garantias vigentes hoje" icon={ShieldCheck} />
                 </div>
+                {showSoldList && (
+                  <SoldList
+                    vehicles={soldInPeriod}
+                    custoVeiculo={custoVeiculo}
+                    onSelect={(v) => { setSelectedVehicle(v); setVoltarParaDashboard(true); setActive("estoque"); window.scrollTo({ top: 0 }); }}
+                  />
+                )}
               </div>
 
               <div className="grid gap-6 xl:grid-cols-[1.5fr_1fr]">
@@ -2001,7 +2081,11 @@ export default function App() {
               onDeleteVehicle={handleDeleteVehicle}
               vehicle={selectedVehicle}
               expenses={expenses}
-              onBack={() => setSelectedVehicle(null)}
+              onBack={() => {
+                setSelectedVehicle(null);
+                if (voltarParaDashboard) { setVoltarParaDashboard(false); setActive("dashboard"); }
+              }}
+              backLabel={voltarParaDashboard ? "Voltar para o dashboard" : "Voltar para estoque"}
               onEditVehicle={(vehicle) => { setEditingVehicle(vehicle); setActive("cadastro"); }}
               onOpenExpense={(plate) => { setExpensePlatePrefill(plate); setActive("despesas"); }}
               onOpenSale={(plate) => { setSalePlatePrefill(plate); setActive("vendas"); }}

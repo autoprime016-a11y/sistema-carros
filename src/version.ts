@@ -2,7 +2,7 @@
 // A cada publicação: aumente APP_VERSION, acrescente a versão no topo de VERSION_HISTORY,
 // atualize "version" no package.json e registre no CHANGELOG.md.
 
-export const APP_VERSION = "1.1.2";
+export const APP_VERSION = "1.2.0";
 
 export type VersionEntry = {
   versao: string;
@@ -12,6 +12,15 @@ export type VersionEntry = {
 };
 
 export const VERSION_HISTORY: VersionEntry[] = [
+  {
+    versao: "1.2.0",
+    data: "2026-10-20",
+    titulo: "Lista de carros vendidos no dashboard",
+    itens: [
+      "O card \"Carros vendidos\" do dashboard abre a lista dos carros vendidos no período, com data, valor e lucro",
+      "Tocar num carro da lista abre a ficha completa; o botão \"Voltar\" retorna ao dashboard",
+    ],
+  },
   {
     versao: "1.1.2",
     data: "2026-10-16",
