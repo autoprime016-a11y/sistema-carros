@@ -1251,6 +1251,12 @@ function StockPage({ vehicles, onSelectVehicle }: { vehicles: Vehicle[]; onSelec
                       <p className="text-xs text-slate-500">Placa</p>
                       <p className="font-semibold">{v.placa}</p>
                       <p className="mt-1 text-xs text-slate-500">{v.cambio} • {v.combustivel}</p>
+                      <span
+                        className={`mt-2 inline-block rounded-full px-2.5 py-0.5 text-xs font-semibold text-white ${COR_GRUPO[grupoDaOrigem(v.origem)]}`}
+                        data-testid={`vehicle-origin-${v.id}`}
+                      >
+                        {grupoDaOrigem(v.origem) === "definir" ? `${v.origem || "Origem"} (definir proprietário)` : v.origem}
+                      </span>
                     </div>
                     <div>
                       {v.status === "Vendido" && v.valorVenda != null ? (

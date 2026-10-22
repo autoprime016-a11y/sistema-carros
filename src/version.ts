@@ -15,8 +15,11 @@ export const VERSION_HISTORY: VersionEntry[] = [
   {
     versao: "1.5.2",
     data: "2026-10-22",
-    titulo: "Menu sem o item Extrato por proprietário",
-    itens: ["Item \"Extrato por proprietário\" removido do menu; o extrato abre pelo Resultado do mês, tocando no card do proprietário"],
+    titulo: "Ajustes no menu e no estoque",
+    itens: [
+      "Item \"Extrato por proprietário\" removido do menu; o extrato abre pelo Resultado do mês, tocando no card do proprietário",
+      "Card do carro no Estoque mostra a origem (Próprio, Troca, Consignado Família Carlesci, Givaldo ou outros)",
+    ],
   },
   {
     versao: "1.5.1",
