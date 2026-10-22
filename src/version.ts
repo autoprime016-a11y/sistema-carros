@@ -2,7 +2,7 @@
 // A cada publicação: aumente APP_VERSION, acrescente a versão no topo de VERSION_HISTORY,
 // atualize "version" no package.json e registre no CHANGELOG.md.
 
-export const APP_VERSION = "1.5.0";
+export const APP_VERSION = "1.5.1";
 
 export type VersionEntry = {
   versao: string;
@@ -12,6 +12,15 @@ export type VersionEntry = {
 };
 
 export const VERSION_HISTORY: VersionEntry[] = [
+  {
+    versao: "1.5.1",
+    data: "2026-10-22",
+    titulo: "Correção do repasse no extrato",
+    itens: [
+      "Repasse ao proprietário passa a incluir as despesas pagas por ele (repasse = venda − parte da loja)",
+      "Texto do card Capital investido da loja: despesas dos consignados são pagas pelos proprietários",
+    ],
+  },
   {
     versao: "1.5.0",
     data: "2026-10-22",

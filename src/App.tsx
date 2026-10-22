@@ -1528,7 +1528,8 @@ function OwnerStatementPage({ vehicles, custoVeiculo }: { vehicles: Vehicle[]; c
   );
 }
 
-// Extrato de um proprietário no mês: carros vendidos, parte no lucro e repasse (valor do carro + parte)
+// Extrato de um proprietário no mês: carros vendidos, parte no lucro e repasse
+// O proprietário paga as despesas, então o repasse = venda − parte da loja (= valor do carro + despesas + parte dele)
 function OwnerStatement({
   dono, mes, linhas, emEstoque, onClose,
 }: {
@@ -1540,7 +1541,7 @@ function OwnerStatement({
 }) {
   const [aviso, setAviso] = useState("");
   const ordenadas = [...linhas].sort((a, b) => (a.v.dataVenda || "").localeCompare(b.v.dataVenda || ""));
-  const repasse = (l: { v: Vehicle; parte: number }) => Number(l.v.compra || 0) + l.parte;
+  const repasse = (l: { valor: number; lucro: number; parte: number }) => l.valor - (l.lucro - l.parte);
   const soma = (f: (l: (typeof linhas)[number]) => number) => ordenadas.reduce((a, l) => a + f(l), 0);
   const nome = NOME_GRUPO[dono];
 
@@ -1588,7 +1589,7 @@ function OwnerStatement({
       doc.setFontSize(9);
       doc.setTextColor(90);
       const notas = [
-        "Repasse = valor do carro + parte do proprietário no lucro.",
+        "Repasse = venda - parte da loja (valor do carro + despesas pagas pelo proprietário + parte dele no lucro).",
         "Lucro = venda - valor do carro - despesas. Com lucro, 50% para a loja e 50% para o proprietário; com prejuízo, o valor fica com o proprietário.",
       ];
       if (emEstoque.length) notas.push(`Em estoque: ${emEstoque.map((v) => `${v.modelo} (${v.placa})`).join(", ")}`);
@@ -1675,7 +1676,7 @@ function OwnerStatement({
           </div>
         )}
         <p className="text-xs text-slate-500">
-          Repasse = valor do carro + parte do proprietário no lucro. As despesas saem do lucro antes da divisão. Com prejuízo, a parte do proprietário fica negativa e a loja não entra.
+          Repasse = venda − parte da loja, ou seja: valor do carro + despesas pagas pelo proprietário + parte dele no lucro. As despesas saem do lucro antes da divisão. Com prejuízo, a loja não fica com nada e o proprietário recebe o valor da venda.
         </p>
         {emEstoque.length > 0 && (
           <p className="text-xs text-slate-500"><strong>Em estoque:</strong> {emEstoque.map((v) => `${v.modelo} (${v.placa})`).join(", ")}</p>
@@ -2102,15 +2103,15 @@ export default function App() {
     const margemLoja = totalVendido > 0 ? (lucroLoja / totalVendido) * 100 : 0;
     const parteProprietarios = lucroRealizado - lucroLoja;
     const consignadosEstoque = stockVehicles.filter((v) => grupoDaOrigem(v.origem) !== "loja").length;
-    // Capital da loja: só próprios e trocas. Consignados ficam de fora (carro do dono; despesas saem do repasse)
+    // Capital da loja: só próprios e trocas. Consignados ficam de fora (carro e despesas são do proprietário)
     const capitalInvestidoLoja = stockVehicles.filter((v) => grupoDaOrigem(v.origem) === "loja").reduce((sum, v) => sum + custoVeiculo(v), 0);
-    const despesasAdiantadasConsignados = stockVehicles
+    const despesasConsignados = stockVehicles
       .filter((v) => grupoDaOrigem(v.origem) !== "loja")
       .reduce((sum, v) => sum + (custoTotalPorPlaca.get(v.placa) || 0), 0);
 
     return {
       lucroPrevistoLoja, margemPrevistaLoja, lucroLoja, margemLoja, parteProprietarios, consignadosEstoque,
-      capitalInvestidoLoja, despesasAdiantadasConsignados,
+      capitalInvestidoLoja, despesasConsignados,
       valorEstoque, custoEstoque, despesasEmEstoque, patioMedio, lucroPrevisto,
       margemMedia, garantiasAtivas, totalVendido, lucroRealizado, margemRealizada,
       stockCount: stockVehicles.length, soldCount: soldInPeriod.length,
@@ -2430,7 +2431,7 @@ export default function App() {
                 <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
                   <StatCard title="Veículos em estoque" value={totals.stockCount} subtitle={`${totals.consignadosEstoque} consignados • pátio médio ${Math.round(totals.patioMedio)} dias`} icon={Car} />
                   <StatCard title="Capital investido (todos os carros)" value={currency(totals.custoEstoque)} subtitle="Compra + despesas dos carros no pátio" icon={Wrench} />
-                  <StatCard title="Capital investido da loja" value={currency(totals.capitalInvestidoLoja)} subtitle={`Só próprios e trocas • + ${currency(totals.despesasAdiantadasConsignados)} adiantados em despesas de consignados`} icon={Store} valueClass="text-emerald-600" />
+                  <StatCard title="Capital investido da loja" value={currency(totals.capitalInvestidoLoja)} subtitle={`Só próprios e trocas • consignados ficam de fora (despesas deles: ${currency(totals.despesasConsignados)}, pagas pelos proprietários)`} icon={Store} valueClass="text-emerald-600" />
                   <StatCard title="Valor de venda do estoque" value={currency(totals.valorEstoque)} subtitle="Soma das vendas previstas" icon={TrendingUp} />
                   <StatCard title="Lucro previsto (todos os carros)" value={currency(totals.lucroPrevisto)} subtitle={`Venda prevista menos custo total • margem ${totals.margemMedia.toFixed(1)}%`} icon={CircleDollarSign} />
                   <StatCard title="Lucro previsto da loja" value={currency(totals.lucroPrevistoLoja)} subtitle={`Sem a parte dos proprietários • margem ${totals.margemPrevistaLoja.toFixed(1)}%`} icon={Store} valueClass="text-emerald-600" />

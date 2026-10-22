@@ -32,6 +32,13 @@ Dados apagados por engano só voltam pela **cópia de segurança** (Configuraç�
 
 ---
 
+## v1.5.1 — 22/10/2026
+- **Correção do repasse** no extrato (tela e PDF): como as despesas dos consignados são pagas pelo proprietário,
+  o repasse agora é **venda − parte da loja** (= valor do carro + despesas + parte dele no lucro).
+  Antes o extrato mostrava "valor do carro + parte", ou seja, um repasse menor no valor das despesas.
+  Extratos gerados na v1.4.0/1.5.0 devem ser refeitos.
+- Texto do card "Capital investido da loja": as despesas dos consignados são pagas pelos proprietários (antes dizia "adiantados").
+
 ## v1.5.0 — 22/10/2026
 - Novo item no menu: **"Extrato por proprietário"**, com escolha do mês e do proprietário (Família Carlesci, Givaldo, Consignado (outros)).
   O extrato continua abrindo também pelo Resultado do mês.
