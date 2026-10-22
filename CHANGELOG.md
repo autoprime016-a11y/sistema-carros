@@ -35,6 +35,8 @@ Dados apagados por engano só voltam pela **cópia de segurança** (Configuraç�
 ## v1.5.0 — 22/10/2026
 - Novo item no menu: **"Extrato por proprietário"**, com escolha do mês e do proprietário (Família Carlesci, Givaldo, Consignado (outros)).
   O extrato continua abrindo também pelo Resultado do mês.
+- O botão "Copiar para WhatsApp" do extrato foi trocado por **"Gerar PDF"**: baixa um PDF com cabeçalho da Auto Prime,
+  tabela dos carros (venda, valor do carro, despesas, lucro, parte do proprietário, repasse), totais e observações.
 - Dashboard: novo card **"Capital investido da loja"** — compra + despesas só dos carros próprios e de troca.
   O subtítulo mostra quanto a loja adiantou em despesas de consignados (que saem do repasse do proprietário).
   O card antigo passa a se chamar "Capital investido (todos os carros)".

@@ -18,6 +18,7 @@ export const VERSION_HISTORY: VersionEntry[] = [
     titulo: "Tela de extrato por proprietário e capital investido da loja",
     itens: [
       "Item \"Extrato por proprietário\" no menu, com escolha do mês e do proprietário",
+      "Extrato com botão \"Gerar PDF\" (no lugar de copiar para o WhatsApp)",
       "Dashboard: card \"Capital investido da loja\" (só próprios e trocas) e despesas adiantadas em consignados",
       "Nome do mês com só a primeira letra maiúscula (\"Outubro de 2026\")",
     ],

@@ -1544,26 +1544,70 @@ function OwnerStatement({
   const soma = (f: (l: (typeof linhas)[number]) => number) => ordenadas.reduce((a, l) => a + f(l), 0);
   const nome = NOME_GRUPO[dono];
 
-  const texto = [
-    `*Extrato ${nome} — ${monthLabel(mes)}*`,
-    "Auto Prime Multimarcas",
-    "",
-    ...ordenadas.map((l) =>
-      `• ${l.v.marca} ${l.v.modelo} (${l.v.placa}) — vendido em ${formatDateBR(l.v.dataVenda)} por ${currency(l.valor)}\n` +
-      `  Valor do carro ${currency(l.v.compra)} | Despesas ${currency(l.despesas)} | Lucro ${currency(l.lucro)} | Sua parte ${currency(l.parte)}\n` +
-      `  Repasse: ${currency(repasse(l))}`),
-    "",
-    `Total do repasse: ${currency(soma(repasse))}`,
-  ].join("\n");
-
-  const copiar = async () => {
+  // Gera o PDF do extrato e baixa o arquivo (bibliotecas carregadas só quando o botão é usado)
+  const [gerando, setGerando] = useState(false);
+  const gerarPdf = async () => {
+    setGerando(true);
     try {
-      await navigator.clipboard.writeText(texto);
-      setAviso("Extrato copiado. É só colar no WhatsApp.");
-    } catch {
-      setAviso("Não foi possível copiar automaticamente neste aparelho.");
+      const [{ default: jsPDF }, { default: autoTable }] = await Promise.all([import("jspdf"), import("jspdf-autotable")]);
+      // Fontes padrão do PDF: troca espaço especial do R$ e símbolos fora do padrão
+      const t = (x: string) => x.replace(/\u00a0|\u202f/g, " ").replace(/[—–]/g, "-").replace(/•/g, "|");
+      const brl = (n: number) => t(currency(n));
+      const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
+      const largura = doc.internal.pageSize.getWidth();
+
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(16);
+      doc.text("Auto Prime Multimarcas", 14, 16);
+      doc.setFontSize(13);
+      doc.text(t(`Extrato - ${nome}`), 14, 24);
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(10);
+      doc.setTextColor(100);
+      doc.text(t(`${monthLabel(mes)} | ${ordenadas.length} ${ordenadas.length === 1 ? "carro vendido" : "carros vendidos"}`), 14, 30);
+      doc.text(t(`Gerado em ${formatDateBR(todayISO())}`), largura - 14, 16, { align: "right" });
+      doc.setTextColor(0);
+
+      autoTable(doc, {
+        startY: 36,
+        head: [["Carro", "Placa", "Venda em", "Venda", "Valor do carro", "Despesas", "Lucro", "Parte do proprietário", "Repasse"]],
+        body: ordenadas.map((l) => [
+          t(`${l.v.marca} ${l.v.modelo}`), l.v.placa, formatDateBR(l.v.dataVenda),
+          brl(l.valor), brl(Number(l.v.compra || 0)), brl(l.despesas), brl(l.lucro), brl(l.parte), brl(repasse(l)),
+        ]),
+        foot: [["Total", "", "", brl(soma((l) => l.valor)), brl(soma((l) => Number(l.v.compra || 0))), brl(soma((l) => l.despesas)),
+          brl(soma((l) => l.lucro)), brl(soma((l) => l.parte)), brl(soma(repasse))]],
+        styles: { fontSize: 9, cellPadding: 2 },
+        headStyles: { fillColor: [37, 99, 235] },
+        footStyles: { fillColor: [241, 245, 249], textColor: 20, fontStyle: "bold" },
+        columnStyles: { 3: { halign: "right" }, 4: { halign: "right" }, 5: { halign: "right" }, 6: { halign: "right" }, 7: { halign: "right" }, 8: { halign: "right", fontStyle: "bold" } },
+      });
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      let y = ((doc as any).lastAutoTable?.finalY || 40) + 8;
+      doc.setFontSize(9);
+      doc.setTextColor(90);
+      const notas = [
+        "Repasse = valor do carro + parte do proprietário no lucro.",
+        "Lucro = venda - valor do carro - despesas. Com lucro, 50% para a loja e 50% para o proprietário; com prejuízo, o valor fica com o proprietário.",
+      ];
+      if (emEstoque.length) notas.push(`Em estoque: ${emEstoque.map((v) => `${v.modelo} (${v.placa})`).join(", ")}`);
+      notas.forEach((n) => {
+        const linhasTexto = doc.splitTextToSize(t(n), largura - 28);
+        doc.text(linhasTexto, 14, y);
+        y += linhasTexto.length * 4.5;
+      });
+
+      const arquivo = `extrato-${nome}-${mes}`.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-zA-Z0-9-]+/g, "-").toLowerCase();
+      doc.save(`${arquivo}.pdf`);
+      setAviso("PDF gerado. Confira a pasta de downloads.");
+    } catch (error) {
+      console.error(error);
+      setAviso("Não foi possível gerar o PDF. Tente de novo.");
+    } finally {
+      setGerando(false);
+      setTimeout(() => setAviso(""), 4000);
     }
-    setTimeout(() => setAviso(""), 3000);
   };
 
   return (
@@ -1578,7 +1622,7 @@ function OwnerStatement({
           </div>
           <div className="flex flex-wrap items-center gap-2">
             {aviso && <span className="text-sm font-medium text-emerald-700">{aviso}</span>}
-            <Button onClick={copiar} disabled={ordenadas.length === 0} className="rounded-2xl bg-blue-600 hover:bg-blue-700">Copiar para WhatsApp</Button>
+            <Button onClick={gerarPdf} disabled={ordenadas.length === 0 || gerando} className="rounded-2xl bg-blue-600 hover:bg-blue-700" data-testid="button-statement-pdf">{gerando ? "Gerando PDF..." : "Gerar PDF"}</Button>
             {onClose && <Button variant="outline" onClick={onClose} className="rounded-2xl">Fechar</Button>}
           </div>
         </div>
