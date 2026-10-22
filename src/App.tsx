@@ -392,8 +392,9 @@ function AppSidebar({
 }
 
 function StatCard({
-  title, value, subtitle, icon: Icon, onClick, active = false,
+  title, value, subtitle, icon: Icon, onClick, active = false, valueClass = "text-slate-950",
 }: {
+  valueClass?: string;
   title: string;
   value: string | number;
   subtitle: string;
@@ -406,7 +407,7 @@ function StatCard({
       <div className="flex items-start justify-between gap-3">
         <div>
           <p className="text-sm text-slate-500">{title}</p>
-          <p className="mt-2 text-2xl font-bold text-slate-950">{value}</p>
+          <p className={`mt-2 text-2xl font-bold ${valueClass}`}>{value}</p>
           <p className="mt-1 text-xs text-slate-500">{subtitle}</p>
           {onClick && (
             <p className="mt-2 text-xs font-semibold text-blue-600">{active ? "Ocultar lista ▲" : "Ver carros ▼"}</p>
@@ -1458,6 +1459,119 @@ const COR_GRUPO: Record<GrupoLucro, string> = {
   loja: "bg-blue-600", carlesci: "bg-violet-600", givaldo: "bg-teal-600", outros: "bg-slate-500", definir: "bg-amber-500",
 };
 
+// Extrato de um proprietário no mês: carros vendidos, parte no lucro e repasse (valor do carro + parte)
+function OwnerStatement({
+  dono, mes, linhas, emEstoque, onClose,
+}: {
+  dono: GrupoLucro;
+  mes: string;
+  linhas: { v: Vehicle; lucro: number; parte: number; valor: number; despesas: number }[];
+  emEstoque: Vehicle[];
+  onClose: () => void;
+}) {
+  const [aviso, setAviso] = useState("");
+  const ordenadas = [...linhas].sort((a, b) => (a.v.dataVenda || "").localeCompare(b.v.dataVenda || ""));
+  const repasse = (l: { v: Vehicle; parte: number }) => Number(l.v.compra || 0) + l.parte;
+  const soma = (f: (l: (typeof linhas)[number]) => number) => ordenadas.reduce((a, l) => a + f(l), 0);
+  const nome = NOME_GRUPO[dono];
+
+  const texto = [
+    `*Extrato ${nome} — ${monthLabel(mes)}*`,
+    "Auto Prime Multimarcas",
+    "",
+    ...ordenadas.map((l) =>
+      `• ${l.v.marca} ${l.v.modelo} (${l.v.placa}) — vendido em ${formatDateBR(l.v.dataVenda)} por ${currency(l.valor)}\n` +
+      `  Valor do carro ${currency(l.v.compra)} | Despesas ${currency(l.despesas)} | Lucro ${currency(l.lucro)} | Sua parte ${currency(l.parte)}\n` +
+      `  Repasse: ${currency(repasse(l))}`),
+    "",
+    `Total do repasse: ${currency(soma(repasse))}`,
+  ].join("\n");
+
+  const copiar = async () => {
+    try {
+      await navigator.clipboard.writeText(texto);
+      setAviso("Extrato copiado. É só colar no WhatsApp.");
+    } catch {
+      setAviso("Não foi possível copiar automaticamente neste aparelho.");
+    }
+    setTimeout(() => setAviso(""), 3000);
+  };
+
+  return (
+    <Card className="rounded-3xl border-0 shadow-md shadow-slate-200/60 ring-2 ring-blue-200" data-testid="owner-statement">
+      <CardHeader>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <CardTitle>Extrato — {nome}</CardTitle>
+            <CardDescription>
+              <span className="capitalize">{monthLabel(mes)}</span> • {ordenadas.length} {ordenadas.length === 1 ? "carro vendido" : "carros vendidos"} • {emEstoque.length} em estoque
+            </CardDescription>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            {aviso && <span className="text-sm font-medium text-emerald-700">{aviso}</span>}
+            <Button onClick={copiar} disabled={ordenadas.length === 0} className="rounded-2xl bg-blue-600 hover:bg-blue-700">Copiar para WhatsApp</Button>
+            <Button variant="outline" onClick={onClose} className="rounded-2xl">Fechar</Button>
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {ordenadas.length === 0 ? (
+          <p className="text-sm text-slate-500">Nenhum carro de {nome} vendido neste mês.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[720px] text-sm">
+              <thead>
+                <tr className="border-b text-right text-xs text-slate-500">
+                  <th className="py-2 pr-2 text-left font-semibold">Carro</th>
+                  <th className="px-2 py-2 font-semibold">Venda</th>
+                  <th className="px-2 py-2 font-semibold">Valor do carro</th>
+                  <th className="px-2 py-2 font-semibold">Despesas</th>
+                  <th className="px-2 py-2 font-semibold">Lucro</th>
+                  <th className="px-2 py-2 font-semibold">Parte do proprietário</th>
+                  <th className="py-2 pl-2 font-semibold">Repasse</th>
+                </tr>
+              </thead>
+              <tbody>
+                {ordenadas.map((l) => (
+                  <tr key={l.v.id} className="border-b text-right tabular-nums">
+                    <td className="py-2 pr-2 text-left">
+                      <p className="font-semibold">{l.v.marca} {l.v.modelo}</p>
+                      <p className="text-xs text-slate-500">{l.v.placa} • vendido em {formatDateBR(l.v.dataVenda)}</p>
+                    </td>
+                    <td className="px-2 py-2">{currency(l.valor)}</td>
+                    <td className="px-2 py-2">{currency(l.v.compra)}</td>
+                    <td className="px-2 py-2">{currency(l.despesas)}</td>
+                    <td className={`px-2 py-2 ${l.lucro >= 0 ? "text-emerald-600" : "text-red-600"}`}>{currency(l.lucro)}</td>
+                    <td className="px-2 py-2">{currency(l.parte)}</td>
+                    <td className="py-2 pl-2 font-bold">{currency(repasse(l))}</td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr className="text-right font-bold tabular-nums">
+                  <td className="py-2 pr-2 text-left">Total</td>
+                  <td className="px-2 py-2">{currency(soma((l) => l.valor))}</td>
+                  <td className="px-2 py-2">{currency(soma((l) => Number(l.v.compra || 0)))}</td>
+                  <td className="px-2 py-2">{currency(soma((l) => l.despesas))}</td>
+                  <td className="px-2 py-2">{currency(soma((l) => l.lucro))}</td>
+                  <td className="px-2 py-2">{currency(soma((l) => l.parte))}</td>
+                  <td className="py-2 pl-2">{currency(soma(repasse))}</td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        )}
+        <p className="text-xs text-slate-500">
+          Repasse = valor do carro + parte do proprietário no lucro. As despesas saem do lucro antes da divisão. Com prejuízo, a parte do proprietário fica negativa e a loja não entra.
+        </p>
+        {emEstoque.length > 0 && (
+          <p className="text-xs text-slate-500"><strong>Em estoque:</strong> {emEstoque.map((v) => `${v.modelo} (${v.placa})`).join(", ")}</p>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 function ResultPanel({
   vehicles, custoVeiculo, onEditVehicle, onOpenVehicle,
 }: {
@@ -1473,6 +1587,7 @@ function ResultPanel({
   );
   const mesAtual = monthKey(todayISO());
   const [mes, setMes] = useState(meses.includes(mesAtual) ? mesAtual : meses[0] || "todos");
+  const [dono, setDono] = useState<GrupoLucro | null>(null);
 
   const doMes = vendidos
     .filter((v) => mes === "todos" || monthKey(v.dataVenda) === mes)
@@ -1577,15 +1692,22 @@ function ResultPanel({
       <div>
         <p className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500">Divisão do lucro</p>
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
-          {grupos.map((g) => (
-            <Card key={g} className="rounded-3xl border-0 shadow-md shadow-slate-200/60" data-testid={`split-${g}`}>
-              <CardContent className="p-5">
-                <div className="flex items-center gap-2 text-sm text-slate-500"><span className={`h-2.5 w-2.5 rounded-full ${COR_GRUPO[g]}`} />{NOME_GRUPO[g]}</div>
-                <p className={`mt-2 text-2xl font-bold ${total[g] < 0 ? "text-red-600" : "text-slate-950"}`}>{currency(total[g])}</p>
-                <p className="mt-1 text-xs text-slate-500">{subtitulo[g]}</p>
-              </CardContent>
-            </Card>
-          ))}
+          {grupos.map((g) => {
+            const clicavel = g === "carlesci" || g === "givaldo" || g === "outros";
+            const conteudo = (
+              <Card className={`h-full rounded-3xl border-0 shadow-md shadow-slate-200/60 ${clicavel ? "transition hover:ring-2 hover:ring-blue-300" : ""} ${dono === g ? "ring-2 ring-blue-500" : ""}`} data-testid={`split-${g}`}>
+                <CardContent className="p-5">
+                  <div className="flex items-center gap-2 text-sm text-slate-500"><span className={`h-2.5 w-2.5 rounded-full ${COR_GRUPO[g]}`} />{NOME_GRUPO[g]}</div>
+                  <p className={`mt-2 text-2xl font-bold ${total[g] < 0 ? "text-red-600" : "text-slate-950"}`}>{currency(total[g])}</p>
+                  <p className="mt-1 text-xs text-slate-500">{subtitulo[g]}</p>
+                  {clicavel && <p className="mt-2 text-xs font-semibold text-blue-600">{dono === g ? "Fechar extrato ▲" : "Ver extrato ▼"}</p>}
+                </CardContent>
+              </Card>
+            );
+            return clicavel ? (
+              <button key={g} type="button" className="text-left" aria-expanded={dono === g} onClick={() => setDono(dono === g ? null : g)}>{conteudo}</button>
+            ) : <div key={g}>{conteudo}</div>;
+          })}
         </div>
         <Card className="mt-4 rounded-3xl border-0 shadow-md shadow-slate-200/60">
           <CardContent className="p-5">
@@ -1600,6 +1722,16 @@ function ResultPanel({
           </CardContent>
         </Card>
       </div>
+
+      {dono && (
+        <OwnerStatement
+          dono={dono}
+          mes={mes}
+          linhas={linhas.filter((l) => l.grupo === dono).map((l) => ({ v: l.v, lucro: l.lucro, parte: l.div[dono], valor: valorVenda(l.v), despesas: custoVeiculo(l.v) - Number(l.v.compra || 0) }))}
+          emEstoque={vehicles.filter((v) => v.status !== "Vendido" && grupoDaOrigem(v.origem) === dono)}
+          onClose={() => setDono(null)}
+        />
+      )}
 
       <Card className="rounded-3xl border-0 shadow-md shadow-slate-200/60">
         <CardHeader>
@@ -1849,7 +1981,17 @@ export default function App() {
     const lucroRealizado = soldInPeriod.reduce((sum, v) => sum + valorVendido(v) - custoVeiculo(v), 0);
     const margemRealizada = totalVendido > 0 ? (lucroRealizado / totalVendido) * 100 : 0;
 
+    // Parte da loja: próprios/trocas 100%; consignados 50% do lucro (0 se prejuízo); "a definir" fica de fora
+    const parteLoja = (v: Vehicle, lucro: number) => dividirLucro(grupoDaOrigem(v.origem), lucro).loja;
+    const lucroPrevistoLoja = completos.reduce((sum, v) => sum + parteLoja(v, Number(v.vendaPrevista || 0) - custoVeiculo(v)), 0);
+    const margemPrevistaLoja = vendaPrevistaCompletos > 0 ? (lucroPrevistoLoja / vendaPrevistaCompletos) * 100 : 0;
+    const lucroLoja = soldInPeriod.reduce((sum, v) => sum + parteLoja(v, valorVendido(v) - custoVeiculo(v)), 0);
+    const margemLoja = totalVendido > 0 ? (lucroLoja / totalVendido) * 100 : 0;
+    const parteProprietarios = lucroRealizado - lucroLoja;
+    const consignadosEstoque = stockVehicles.filter((v) => grupoDaOrigem(v.origem) !== "loja").length;
+
     return {
+      lucroPrevistoLoja, margemPrevistaLoja, lucroLoja, margemLoja, parteProprietarios, consignadosEstoque,
       valorEstoque, custoEstoque, despesasEmEstoque, patioMedio, lucroPrevisto,
       margemMedia, garantiasAtivas, totalVendido, lucroRealizado, margemRealizada,
       stockCount: stockVehicles.length, soldCount: soldInPeriod.length,
@@ -2166,22 +2308,24 @@ export default function App() {
 
               <div>
                 <p className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500">Estoque atual</p>
-                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
-                  <StatCard title="Veículos em estoque" value={totals.stockCount} subtitle={`Tempo médio de pátio: ${Math.round(totals.patioMedio)} dias`} icon={Car} />
+                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                  <StatCard title="Veículos em estoque" value={totals.stockCount} subtitle={`${totals.consignadosEstoque} consignados • pátio médio ${Math.round(totals.patioMedio)} dias`} icon={Car} />
                   <StatCard title="Capital investido" value={currency(totals.custoEstoque)} subtitle="Compra + despesas dos carros no pátio" icon={Wrench} />
                   <StatCard title="Valor de venda do estoque" value={currency(totals.valorEstoque)} subtitle="Soma das vendas previstas" icon={TrendingUp} />
-                  <StatCard title="Lucro previsto" value={currency(totals.lucroPrevisto)} subtitle="Venda prevista menos custo total" icon={CircleDollarSign} />
-                  <StatCard title="Margem prevista" value={`${totals.margemMedia.toFixed(1)}%`} subtitle="Lucro sobre o preço de venda" icon={Target} />
+                  <StatCard title="Lucro previsto (todos os carros)" value={currency(totals.lucroPrevisto)} subtitle={`Venda prevista menos custo total • margem ${totals.margemMedia.toFixed(1)}%`} icon={CircleDollarSign} />
+                  <StatCard title="Lucro previsto da loja" value={currency(totals.lucroPrevistoLoja)} subtitle={`Sem a parte dos proprietários • margem ${totals.margemPrevistaLoja.toFixed(1)}%`} icon={Store} valueClass="text-emerald-600" />
+                  <StatCard title="Parte prevista dos proprietários" value={currency(totals.lucroPrevisto - totals.lucroPrevistoLoja)} subtitle="50% do lucro previsto dos consignados" icon={Target} />
                 </div>
               </div>
 
               <div>
                 <p className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500">Vendas — {monthLabel(dashboardMonth)}</p>
-                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
                   <StatCard title="Carros vendidos" value={totals.soldCount} subtitle="Pela data da venda" icon={CheckCircle2} onClick={() => setShowSoldList((x) => !x)} active={showSoldList} />
                   <StatCard title="Total vendido" value={currency(totals.totalVendido)} subtitle="Faturamento das vendas" icon={DollarSign} />
-                  <StatCard title="Lucro realizado" value={currency(totals.lucroRealizado)} subtitle="Venda menos compra e despesas" icon={CircleDollarSign} />
-                  <StatCard title="Margem realizada" value={`${totals.margemRealizada.toFixed(1)}%`} subtitle="Lucro sobre o preço de venda" icon={Target} />
+                  <StatCard title="Lucro realizado (todos os carros)" value={currency(totals.lucroRealizado)} subtitle={`Venda menos compra e despesas • margem ${totals.margemRealizada.toFixed(1)}%`} icon={CircleDollarSign} />
+                  <StatCard title="Lucro da loja" value={currency(totals.lucroLoja)} subtitle={`Sem a parte dos proprietários • margem ${totals.margemLoja.toFixed(1)}%`} icon={Store} valueClass="text-emerald-600" />
+                  <StatCard title="Parte dos proprietários" value={currency(totals.parteProprietarios)} subtitle="50% do lucro dos consignados" icon={Target} />
                   <StatCard title="Em garantia" value={totals.garantiasAtivas} subtitle="Garantias vigentes hoje" icon={ShieldCheck} />
                 </div>
                 {showSoldList && (

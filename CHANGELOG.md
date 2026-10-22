@@ -32,6 +32,18 @@ Dados apagados por engano só voltam pela **cópia de segurança** (Configuraç�
 
 ---
 
+## v1.4.0 — 22/10/2026
+**Dashboard**
+- Novos cards **"Lucro previsto da loja"** (estoque) e **"Lucro da loja"** (vendas), sem a parte dos proprietários,
+  com a mesma regra do Resultado do mês. Também **"Parte dos proprietários"** e **"Parte prevista dos proprietários"**.
+- Os cards de lucro antigos passam a se chamar "(todos os carros)"; as margens aparecem no subtítulo.
+
+**Resultado do mês**
+- Tocar em **Família Carlesci**, **Givaldo** ou **Consignado (outros)** abre o **extrato** do proprietário no mês:
+  venda, valor do carro, despesas, lucro, parte do proprietário e **repasse** (valor do carro + parte), com totais.
+- Botão **"Copiar para WhatsApp"** gera um texto pronto para mandar ao proprietário.
+- O repasse mostra quanto é devido; ainda não marca se foi pago.
+
 ## v1.3.0 — 22/10/2026
 **Origem do carro**
 - Novas opções no cadastro: **Consignado Família Carlesci**, **Consignado Givaldo** e **Consignado (outros)**, além de Próprio e Troca.

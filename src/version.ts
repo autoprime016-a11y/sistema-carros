@@ -2,7 +2,7 @@
 // A cada publicação: aumente APP_VERSION, acrescente a versão no topo de VERSION_HISTORY,
 // atualize "version" no package.json e registre no CHANGELOG.md.
 
-export const APP_VERSION = "1.3.0";
+export const APP_VERSION = "1.4.0";
 
 export type VersionEntry = {
   versao: string;
@@ -12,6 +12,17 @@ export type VersionEntry = {
 };
 
 export const VERSION_HISTORY: VersionEntry[] = [
+  {
+    versao: "1.4.0",
+    data: "2026-10-22",
+    titulo: "Lucro da loja no dashboard e extrato por proprietário",
+    itens: [
+      "Dashboard mostra o lucro da loja (sem a parte dos proprietários) no estoque e nas vendas",
+      "Cards de lucro de todos os carros passam a dizer isso no nome",
+      "No Resultado do mês, tocar em Família Carlesci, Givaldo ou outros abre o extrato do proprietário",
+      "Extrato com venda, valor do carro, despesas, lucro, parte do proprietário e repasse, com botão para copiar para o WhatsApp",
+    ],
+  },
   {
     versao: "1.3.0",
     data: "2026-10-22",
