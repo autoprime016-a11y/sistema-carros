@@ -2,7 +2,7 @@
 // A cada publicação: aumente APP_VERSION, acrescente a versão no topo de VERSION_HISTORY,
 // atualize "version" no package.json e registre no CHANGELOG.md.
 
-export const APP_VERSION = "1.2.0";
+export const APP_VERSION = "1.3.0";
 
 export type VersionEntry = {
   versao: string;
@@ -12,6 +12,17 @@ export type VersionEntry = {
 };
 
 export const VERSION_HISTORY: VersionEntry[] = [
+  {
+    versao: "1.3.0",
+    data: "2026-10-22",
+    titulo: "Resultado do mês e proprietários dos consignados",
+    itens: [
+      "Novas origens no cadastro: Consignado Família Carlesci, Consignado Givaldo e Consignado (outros)",
+      "Tela Resultado do mês: vendidos, lucro total e divisão entre Loja, Família Carlesci, Givaldo e outros",
+      "Consignado com lucro: 50% loja e 50% proprietário; com prejuízo, a loja fica com R$ 0",
+      "Aviso dos carros com proprietário a conferir, com sugestão e acesso direto ao cadastro",
+    ],
+  },
   {
     versao: "1.2.0",
     data: "2026-10-20",

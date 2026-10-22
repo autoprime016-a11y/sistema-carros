@@ -33,6 +33,29 @@ const TIPO_DESPESA_OPTIONS = [
   "Mecânica","Troca de óleo","Combustível","Comissão","Regularização","Outros",
 ];
 
+// Origem do carro e divisão do lucro
+const ORIGEM_OPTIONS = ["Próprio", "Troca", "Consignado Família Carlesci", "Consignado Givaldo", "Consignado (outros)"];
+type GrupoLucro = "loja" | "carlesci" | "givaldo" | "outros" | "definir";
+const GRUPO_POR_ORIGEM: Record<string, GrupoLucro> = {
+  "Próprio": "loja",
+  "Troca": "loja",
+  "Consignado Família Carlesci": "carlesci",
+  "Consignado Givaldo": "givaldo",
+  "Consignado (outros)": "outros",
+};
+// Qualquer origem fora da lista (ex.: o "Consignado" antigo, sem proprietário) fica "a definir"
+const grupoDaOrigem = (origem?: string): GrupoLucro => GRUPO_POR_ORIGEM[origem || ""] || "definir";
+const NOME_GRUPO: Record<GrupoLucro, string> = {
+  loja: "Loja", carlesci: "Família Carlesci", givaldo: "Givaldo", outros: "Consignado (outros)", definir: "A definir",
+};
+// Pista do proprietário pelas observações/modelo (ex.: "FAMILIA CARLESCI", "GIVA")
+const pistaProprietario = (v: { observacao?: string; modelo?: string }): string | null => {
+  const texto = `${v.observacao || ""} ${v.modelo || ""}`;
+  if (/CARLESCI/i.test(texto)) return "Consignado Família Carlesci";
+  if (/\bGIVA/i.test(texto)) return "Consignado Givaldo";
+  return null;
+};
+
 const COMPLEMENTO_OPTIONS = ["Completo","Compl - Ar","Apenas AR","Basico"];
 
 const currency = (value: number | string | undefined | null) =>
@@ -293,6 +316,7 @@ function AppSidebar({
 }) {
   const items = [
     ["dashboard", "Dashboard", LayoutDashboard],
+    ["resultado", "Resultado do mês", CircleDollarSign],
     ["cadastro", "Cadastrar veículo", PlusCircle],
     ["estoque", "Estoque", Car],
     ["despesas", "Despesas", Wrench],
@@ -583,9 +607,10 @@ function VehicleForm({
               <Select value={form.origem} onValueChange={(value) => change("origem", value)}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent className="max-h-72 overflow-y-auto">
-                  <SelectItem value="Próprio">Próprio</SelectItem>
-                  <SelectItem value="Consignado">Consignado</SelectItem>
-                  <SelectItem value="Troca">Troca</SelectItem>
+                  {!ORIGEM_OPTIONS.includes(form.origem) && form.origem && (
+                    <SelectItem value={form.origem}>{form.origem} (escolha o proprietário)</SelectItem>
+                  )}
+                  {ORIGEM_OPTIONS.map((opt) => <SelectItem key={opt} value={opt}>{opt}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
@@ -1415,6 +1440,205 @@ function ShowroomPanel({ stockVehicles, expenseByPlate }: { stockVehicles: Vehic
   );
 }
 
+// Resultado do mês: vendidos, lucro e divisão entre a loja e os proprietários
+type DivisaoLucro = Record<GrupoLucro, number>;
+const divisaoVazia = (): DivisaoLucro => ({ loja: 0, carlesci: 0, givaldo: 0, outros: 0, definir: 0 });
+
+// Próprio/Troca: 100% loja. Consignado com lucro: 50/50. Consignado com prejuízo: tudo do proprietário.
+// "A definir": consignado sem proprietário escolhido (o lucro todo fica separado até corrigir).
+function dividirLucro(grupo: GrupoLucro, lucro: number): DivisaoLucro {
+  const d = divisaoVazia();
+  if (grupo === "loja" || grupo === "definir") d[grupo] = lucro;
+  else if (lucro > 0) { d.loja = lucro / 2; d[grupo] = lucro / 2; }
+  else d[grupo] = lucro;
+  return d;
+}
+
+const COR_GRUPO: Record<GrupoLucro, string> = {
+  loja: "bg-blue-600", carlesci: "bg-violet-600", givaldo: "bg-teal-600", outros: "bg-slate-500", definir: "bg-amber-500",
+};
+
+function ResultPanel({
+  vehicles, custoVeiculo, onEditVehicle, onOpenVehicle,
+}: {
+  vehicles: Vehicle[];
+  custoVeiculo: (v: Vehicle) => number;
+  onEditVehicle: (v: Vehicle) => void;
+  onOpenVehicle: (v: Vehicle) => void;
+}) {
+  const vendidos = useMemo(() => vehicles.filter((v) => v.status === "Vendido" && v.dataVenda), [vehicles]);
+  const meses = useMemo(
+    () => [...new Set(vendidos.map((v) => monthKey(v.dataVenda)))].sort((a, b) => b.localeCompare(a)),
+    [vendidos],
+  );
+  const mesAtual = monthKey(todayISO());
+  const [mes, setMes] = useState(meses.includes(mesAtual) ? mesAtual : meses[0] || "todos");
+
+  const doMes = vendidos
+    .filter((v) => mes === "todos" || monthKey(v.dataVenda) === mes)
+    .sort((a, b) => (b.dataVenda || "").localeCompare(a.dataVenda || ""));
+
+  const valorVenda = (v: Vehicle) => Number(v.valorVenda ?? v.vendaPrevista ?? 0);
+  const linhas = doMes.map((v) => {
+    const grupo = grupoDaOrigem(v.origem);
+    const lucro = valorVenda(v) - custoVeiculo(v);
+    return { v, grupo, lucro, div: dividirLucro(grupo, lucro) };
+  });
+  const total = divisaoVazia();
+  linhas.forEach(({ div }) => (Object.keys(total) as GrupoLucro[]).forEach((k) => { total[k] += div[k]; }));
+  const lucroTotal = linhas.reduce((a, l) => a + l.lucro, 0);
+  const faturamento = doMes.reduce((a, v) => a + valorVenda(v), 0);
+
+  // Carros (de todos os meses, inclusive em estoque) com proprietário a conferir
+  const aConferir = vehicles
+    .map((v) => {
+      const grupo = grupoDaOrigem(v.origem);
+      const pista = pistaProprietario(v);
+      if (grupo === "definir") return { v, motivo: `Origem "${v.origem || "vazia"}", sem proprietário definido`, sugestao: pista || "Consignado (outros)" };
+      if (pista && v.origem !== pista) return { v, motivo: `Origem "${v.origem}", mas a observação cita ${pista.replace("Consignado ", "")}`, sugestao: pista };
+      return null;
+    })
+    .filter(Boolean) as { v: Vehicle; motivo: string; sugestao: string }[];
+
+  const grupos: GrupoLucro[] = ["loja", "carlesci", "givaldo", "outros", ...(total.definir !== 0 ? ["definir" as GrupoLucro] : [])];
+  const subtitulo: Record<GrupoLucro, string> = {
+    loja: "Próprios e trocas + 50% dos consignados",
+    carlesci: "50% do lucro dos carros da família",
+    givaldo: "50% do lucro dos carros do Givaldo",
+    outros: "50% do lucro dos demais consignados",
+    definir: "Consignados sem proprietário escolhido",
+  };
+  const positivos = grupos.map((g) => [g, Math.max(0, total[g])] as [GrupoLucro, number]);
+  const somaPos = positivos.reduce((a, [, x]) => a + x, 0) || 1;
+
+  return (
+    <div className="space-y-6">
+      <Card className="rounded-3xl border-0 bg-blue-50 shadow-md shadow-slate-200/60 ring-2 ring-blue-300">
+        <CardContent className="flex flex-col gap-3 p-5 md:flex-row md:items-center md:justify-between">
+          <div>
+            <p className="text-sm font-medium text-blue-700">Resultado do mês</p>
+            <p className="text-lg font-semibold capitalize text-slate-900">{monthLabel(mes)}</p>
+            <p className="text-xs text-slate-500">Vendas pela data da venda e divisão do lucro entre a loja e os proprietários.</p>
+          </div>
+          <div className="w-full md:w-[280px]">
+            <Select value={mes} onValueChange={setMes}>
+              <SelectTrigger className="rounded-2xl border-blue-300 bg-white" data-testid="select-result-month"><SelectValue /></SelectTrigger>
+              <SelectContent className="max-h-72 overflow-y-auto">
+                {["todos", ...meses].map((m) => <SelectItem key={m} value={m}>{monthLabel(m)}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+        </CardContent>
+      </Card>
+
+      {aConferir.length > 0 && (
+        <Card className="rounded-3xl border-0 bg-amber-50 shadow-md shadow-slate-200/60 ring-2 ring-amber-300" data-testid="owner-issues">
+          <CardContent className="space-y-3 p-5">
+            <div className="flex items-center gap-2 font-semibold text-amber-800">
+              <AlertTriangle className="h-5 w-5" />
+              {aConferir.length === 1 ? "1 carro com proprietário a conferir" : `${aConferir.length} carros com proprietário a conferir`}
+            </div>
+            <p className="text-sm text-amber-800">Toque no carro para abrir o cadastro e escolher a origem certa. A lista vale para todos os meses e inclui carros em estoque.</p>
+            <div className="space-y-2">
+              {aConferir.map(({ v, motivo, sugestao }) => (
+                <button
+                  key={v.id}
+                  type="button"
+                  onClick={() => onEditVehicle(v)}
+                  className="flex w-full flex-wrap items-center justify-between gap-2 rounded-2xl border border-amber-200 bg-white p-3 text-left transition hover:border-blue-400"
+                >
+                  <div className="min-w-0">
+                    <p className="font-semibold text-slate-900">
+                      {v.placa} <span className="font-normal">{v.marca} {v.modelo}</span>
+                      {v.status !== "Vendido" && <span className="ml-1 text-xs text-slate-500">(em estoque)</span>}
+                    </p>
+                    <p className="text-sm text-slate-500">{motivo}</p>
+                    <span className="mt-1 inline-block rounded-full bg-blue-50 px-2 py-0.5 text-xs font-semibold text-blue-700">
+                      Sugestão: {sugestao.replace("Consignado ", "")}
+                    </span>
+                  </div>
+                  <span className="text-sm font-semibold text-blue-600">Corrigir ›</span>
+                </button>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      <div>
+        <p className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500">Resumo</p>
+        <div className="grid gap-4 md:grid-cols-3">
+          <StatCard title="Carros vendidos" value={doMes.length} subtitle="Pela data da venda" icon={CheckCircle2} />
+          <StatCard title="Total vendido" value={currency(faturamento)} subtitle="Faturamento das vendas" icon={DollarSign} />
+          <StatCard title="Lucro de todos os carros" value={currency(lucroTotal)} subtitle="Venda menos compra e despesas" icon={CircleDollarSign} />
+        </div>
+      </div>
+
+      <div>
+        <p className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500">Divisão do lucro</p>
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+          {grupos.map((g) => (
+            <Card key={g} className="rounded-3xl border-0 shadow-md shadow-slate-200/60" data-testid={`split-${g}`}>
+              <CardContent className="p-5">
+                <div className="flex items-center gap-2 text-sm text-slate-500"><span className={`h-2.5 w-2.5 rounded-full ${COR_GRUPO[g]}`} />{NOME_GRUPO[g]}</div>
+                <p className={`mt-2 text-2xl font-bold ${total[g] < 0 ? "text-red-600" : "text-slate-950"}`}>{currency(total[g])}</p>
+                <p className="mt-1 text-xs text-slate-500">{subtitulo[g]}</p>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+        <Card className="mt-4 rounded-3xl border-0 shadow-md shadow-slate-200/60">
+          <CardContent className="p-5">
+            <div className="flex h-3 overflow-hidden rounded-full bg-slate-100" aria-label="Divisão do lucro">
+              {positivos.map(([g, x]) => <div key={g} className={COR_GRUPO[g]} style={{ width: `${(x / somaPos) * 100}%` }} title={NOME_GRUPO[g]} />)}
+            </div>
+            <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500">
+              {positivos.map(([g, x]) => (
+                <span key={g} className="inline-flex items-center gap-1.5"><span className={`h-2.5 w-2.5 rounded-full ${COR_GRUPO[g]}`} />{NOME_GRUPO[g]} {Math.round((x / somaPos) * 100)}%</span>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      <Card className="rounded-3xl border-0 shadow-md shadow-slate-200/60">
+        <CardHeader>
+          <CardTitle>Carros vendidos no mês</CardTitle>
+          <CardDescription>Consignado com lucro: metade da loja, metade do proprietário. Com prejuízo, a loja fica com R$ 0. Toque no carro para abrir a ficha.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {linhas.length === 0 && <p className="text-sm text-slate-500">Nenhum carro vendido neste mês.</p>}
+          <div className="space-y-3">
+            {linhas.map(({ v, grupo, lucro, div }) => (
+              <button
+                key={v.id}
+                type="button"
+                onClick={() => onOpenVehicle(v)}
+                className="flex w-full flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-left transition hover:border-blue-300 hover:bg-white"
+              >
+                <div className="min-w-0">
+                  <p className="font-semibold">
+                    {v.marca} {v.modelo}
+                    <span className={`ml-2 inline-block rounded-full px-2 py-0.5 align-middle text-xs font-semibold text-white ${COR_GRUPO[grupo]}`}>{v.origem}</span>
+                  </p>
+                  <p className="text-sm text-slate-500">{v.placa} • vendido em {formatDateBR(v.dataVenda)} por {currency(valorVenda(v))}</p>
+                  <p className="text-sm text-slate-500">
+                    {(Object.keys(div) as GrupoLucro[]).filter((k) => div[k] !== 0).map((k) => `${NOME_GRUPO[k]} ${currency(div[k])}`).join(" • ") || "Sem lucro"}
+                  </p>
+                </div>
+                <div className="text-right">
+                  <p className={`font-bold ${lucro >= 0 ? "text-emerald-600" : "text-red-600"}`}>{currency(lucro)}</p>
+                  <p className="text-xs text-slate-500">{lucro >= 0 ? "lucro do carro" : "prejuízo"}</p>
+                </div>
+              </button>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
 // Cópia de segurança: baixa todas as tabelas do banco num arquivo .json
 // (permite restaurar os dados se algo for apagado ou alterado por engano)
 function SettingsPanel() {
@@ -1528,6 +1752,7 @@ export default function App() {
   const [dashboardMonth, setDashboardMonth] = useState("todos");
   const [showSoldList, setShowSoldList] = useState(false);
   const [voltarParaDashboard, setVoltarParaDashboard] = useState(false);
+  const [voltarParaResultado, setVoltarParaResultado] = useState(false);
   const [expensePlatePrefill, setExpensePlatePrefill] = useState("");
   const [salePlatePrefill, setSalePlatePrefill] = useState("");
   const [editingVehicle, setEditingVehicle] = useState<Vehicle | null>(null);
@@ -1675,7 +1900,8 @@ export default function App() {
       }
 
       await loadData();
-      setActive("estoque");
+      setActive(voltarParaResultado ? "resultado" : "estoque");
+      setVoltarParaResultado(false);
       setSelectedVehicle(null);
     } catch (error) {
       console.error(error);
@@ -1869,6 +2095,8 @@ export default function App() {
             if (tab !== "estoque") setSelectedVehicle(null);
             if (tab !== "despesas") setEditingExpense(null);
             setVoltarParaDashboard(false);
+            setVoltarParaResultado(false);
+            if (tab !== "cadastro") setEditingVehicle(null);
           }}
           user={user}
           onLogout={() => setIsAuthenticated(false)}
@@ -2039,11 +2267,20 @@ export default function App() {
             </div>
           )}
 
+          {active === "resultado" && (
+            <ResultPanel
+              vehicles={vehicles}
+              custoVeiculo={custoVeiculo}
+              onEditVehicle={(v) => { setEditingVehicle(v); setVoltarParaResultado(true); setActive("cadastro"); window.scrollTo({ top: 0 }); }}
+              onOpenVehicle={(v) => { setSelectedVehicle(v); setVoltarParaResultado(true); setActive("estoque"); window.scrollTo({ top: 0 }); }}
+            />
+          )}
+
           {active === "cadastro" && (
             <VehicleForm
               onSave={handleSaveVehicle}
               editingVehicle={editingVehicle}
-              onCancelEdit={() => { setEditingVehicle(null); setActive("estoque"); }}
+              onCancelEdit={() => { setEditingVehicle(null); setActive(voltarParaResultado ? "resultado" : "estoque"); setVoltarParaResultado(false); }}
             />
           )}
 
@@ -2084,8 +2321,9 @@ export default function App() {
               onBack={() => {
                 setSelectedVehicle(null);
                 if (voltarParaDashboard) { setVoltarParaDashboard(false); setActive("dashboard"); }
+                else if (voltarParaResultado) { setVoltarParaResultado(false); setActive("resultado"); }
               }}
-              backLabel={voltarParaDashboard ? "Voltar para o dashboard" : "Voltar para estoque"}
+              backLabel={voltarParaDashboard ? "Voltar para o dashboard" : voltarParaResultado ? "Voltar para o resultado" : "Voltar para estoque"}
               onEditVehicle={(vehicle) => { setEditingVehicle(vehicle); setActive("cadastro"); }}
               onOpenExpense={(plate) => { setExpensePlatePrefill(plate); setActive("despesas"); }}
               onOpenSale={(plate) => { setSalePlatePrefill(plate); setActive("vendas"); }}

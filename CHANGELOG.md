@@ -32,6 +32,20 @@ Dados apagados por engano só voltam pela **cópia de segurança** (Configuraç�
 
 ---
 
+## v1.3.0 — 22/10/2026
+**Origem do carro**
+- Novas opções no cadastro: **Consignado Família Carlesci**, **Consignado Givaldo** e **Consignado (outros)**, além de Próprio e Troca.
+- Carros antigos cadastrados só como "Consignado" continuam assim até serem corrigidos (aparecem como "a definir").
+
+**Tela "Resultado do mês"** (menu lateral)
+- Carros vendidos no mês, total vendido e lucro de todos os carros.
+- Divisão do lucro: **Loja**, **Família Carlesci**, **Givaldo**, **Consignado (outros)** e, enquanto houver pendência, **A definir**.
+- Regra: lucro = venda − valor de compra/do dono − despesas. Próprio e Troca: 100% loja.
+  Consignado com lucro: 50% loja, 50% proprietário. Com prejuízo: tudo do proprietário (loja R$ 0).
+- Aviso dos carros com proprietário a conferir (sem dono definido, ou origem diferente do que diz a observação),
+  com sugestão tirada da observação. Tocar no carro abre o cadastro; ao salvar, volta para o Resultado.
+- Nenhuma mudança na estrutura do banco e nenhum carro alterado automaticamente.
+
 ## v1.2.0 — 20/10/2026
 - No dashboard, o card **"Carros vendidos"** agora abre a **lista dos carros vendidos** no período do filtro,
   com placa, data da venda, dias de pátio, valor e lucro de cada um (mais recentes primeiro).
