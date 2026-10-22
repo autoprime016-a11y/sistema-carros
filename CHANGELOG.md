@@ -32,6 +32,14 @@ Dados apagados por engano só voltam pela **cópia de segurança** (Configuraç�
 
 ---
 
+## v1.5.0 — 22/10/2026
+- Novo item no menu: **"Extrato por proprietário"**, com escolha do mês e do proprietário (Família Carlesci, Givaldo, Consignado (outros)).
+  O extrato continua abrindo também pelo Resultado do mês.
+- Dashboard: novo card **"Capital investido da loja"** — compra + despesas só dos carros próprios e de troca.
+  O subtítulo mostra quanto a loja adiantou em despesas de consignados (que saem do repasse do proprietário).
+  O card antigo passa a se chamar "Capital investido (todos os carros)".
+- O mês aparece como "Outubro de 2026" (antes "Outubro De 2026").
+
 ## v1.4.0 — 22/10/2026
 **Dashboard**
 - Novos cards **"Lucro previsto da loja"** (estoque) e **"Lucro da loja"** (vendas), sem a parte dos proprietários,

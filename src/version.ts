@@ -2,7 +2,7 @@
 // A cada publicação: aumente APP_VERSION, acrescente a versão no topo de VERSION_HISTORY,
 // atualize "version" no package.json e registre no CHANGELOG.md.
 
-export const APP_VERSION = "1.4.0";
+export const APP_VERSION = "1.5.0";
 
 export type VersionEntry = {
   versao: string;
@@ -12,6 +12,16 @@ export type VersionEntry = {
 };
 
 export const VERSION_HISTORY: VersionEntry[] = [
+  {
+    versao: "1.5.0",
+    data: "2026-10-22",
+    titulo: "Tela de extrato por proprietário e capital investido da loja",
+    itens: [
+      "Item \"Extrato por proprietário\" no menu, com escolha do mês e do proprietário",
+      "Dashboard: card \"Capital investido da loja\" (só próprios e trocas) e despesas adiantadas em consignados",
+      "Nome do mês com só a primeira letra maiúscula (\"Outubro de 2026\")",
+    ],
+  },
   {
     versao: "1.4.0",
     data: "2026-10-22",

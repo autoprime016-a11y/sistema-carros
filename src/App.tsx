@@ -96,7 +96,8 @@ const monthLabel = (key: string) => {
   if (key === "sem-data") return "Sem data";
   const [year, month] = key.split("-");
   const date = new Date(Number(year), Number(month) - 1, 1);
-  return new Intl.DateTimeFormat("pt-BR", { month: "long", year: "numeric" }).format(date);
+  const texto = new Intl.DateTimeFormat("pt-BR", { month: "long", year: "numeric" }).format(date);
+  return texto.charAt(0).toUpperCase() + texto.slice(1);
 };
 
 const diffDays = (dateStr?: string, endDate?: string) => {
@@ -317,6 +318,7 @@ function AppSidebar({
   const items = [
     ["dashboard", "Dashboard", LayoutDashboard],
     ["resultado", "Resultado do mês", CircleDollarSign],
+    ["extrato", "Extrato por proprietário", FileText],
     ["cadastro", "Cadastrar veículo", PlusCircle],
     ["estoque", "Estoque", Car],
     ["despesas", "Despesas", Wrench],
@@ -1459,6 +1461,73 @@ const COR_GRUPO: Record<GrupoLucro, string> = {
   loja: "bg-blue-600", carlesci: "bg-violet-600", givaldo: "bg-teal-600", outros: "bg-slate-500", definir: "bg-amber-500",
 };
 
+// Carros vendidos de um proprietário num mês, com lucro e parte dele
+function linhasDoProprietario(vehicles: Vehicle[], custoVeiculo: (v: Vehicle) => number, mes: string, dono: GrupoLucro) {
+  return vehicles
+    .filter((v) => v.status === "Vendido" && v.dataVenda && grupoDaOrigem(v.origem) === dono && (mes === "todos" || monthKey(v.dataVenda) === mes))
+    .map((v) => {
+      const valor = Number(v.valorVenda ?? v.vendaPrevista ?? 0);
+      const lucro = valor - custoVeiculo(v);
+      return { v, lucro, parte: dividirLucro(dono, lucro)[dono], valor, despesas: custoVeiculo(v) - Number(v.compra || 0) };
+    });
+}
+
+// Tela própria do extrato: escolhe o mês e o proprietário
+function OwnerStatementPage({ vehicles, custoVeiculo }: { vehicles: Vehicle[]; custoVeiculo: (v: Vehicle) => number }) {
+  const meses = useMemo(
+    () => [...new Set(vehicles.filter((v) => v.status === "Vendido" && v.dataVenda).map((v) => monthKey(v.dataVenda)))].sort((a, b) => b.localeCompare(a)),
+    [vehicles],
+  );
+  const mesAtual = monthKey(todayISO());
+  const [mes, setMes] = useState(meses.includes(mesAtual) ? mesAtual : meses[0] || "todos");
+  const [dono, setDono] = useState<GrupoLucro>("carlesci");
+  const opcoes: GrupoLucro[] = ["carlesci", "givaldo", "outros"];
+
+  return (
+    <div className="space-y-6">
+      <Card className="rounded-3xl border-0 bg-blue-50 shadow-md shadow-slate-200/60 ring-2 ring-blue-300">
+        <CardContent className="flex flex-col gap-4 p-5">
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div>
+              <p className="text-sm font-medium text-blue-700">Extrato por proprietário</p>
+              <p className="text-lg font-semibold text-slate-900">{NOME_GRUPO[dono]} • {monthLabel(mes)}</p>
+            </div>
+            <div className="w-full md:w-[280px]">
+              <Select value={mes} onValueChange={setMes}>
+                <SelectTrigger className="rounded-2xl border-blue-300 bg-white" data-testid="select-statement-month"><SelectValue /></SelectTrigger>
+                <SelectContent className="max-h-72 overflow-y-auto">
+                  {["todos", ...meses].map((m) => <SelectItem key={m} value={m}>{monthLabel(m)}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-2" role="tablist" aria-label="Proprietário">
+            {opcoes.map((g) => (
+              <button
+                key={g}
+                type="button"
+                role="tab"
+                aria-selected={dono === g}
+                onClick={() => setDono(g)}
+                className={`inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-semibold transition ${dono === g ? "border-blue-600 bg-blue-600 text-white" : "border-slate-200 bg-white text-slate-700 hover:border-blue-300"}`}
+              >
+                <span className={`h-2.5 w-2.5 rounded-full ${COR_GRUPO[g]}`} />{NOME_GRUPO[g]}
+              </button>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+
+      <OwnerStatement
+        dono={dono}
+        mes={mes}
+        linhas={linhasDoProprietario(vehicles, custoVeiculo, mes, dono)}
+        emEstoque={vehicles.filter((v) => v.status !== "Vendido" && grupoDaOrigem(v.origem) === dono)}
+      />
+    </div>
+  );
+}
+
 // Extrato de um proprietário no mês: carros vendidos, parte no lucro e repasse (valor do carro + parte)
 function OwnerStatement({
   dono, mes, linhas, emEstoque, onClose,
@@ -1467,7 +1536,7 @@ function OwnerStatement({
   mes: string;
   linhas: { v: Vehicle; lucro: number; parte: number; valor: number; despesas: number }[];
   emEstoque: Vehicle[];
-  onClose: () => void;
+  onClose?: () => void;
 }) {
   const [aviso, setAviso] = useState("");
   const ordenadas = [...linhas].sort((a, b) => (a.v.dataVenda || "").localeCompare(b.v.dataVenda || ""));
@@ -1504,13 +1573,13 @@ function OwnerStatement({
           <div>
             <CardTitle>Extrato — {nome}</CardTitle>
             <CardDescription>
-              <span className="capitalize">{monthLabel(mes)}</span> • {ordenadas.length} {ordenadas.length === 1 ? "carro vendido" : "carros vendidos"} • {emEstoque.length} em estoque
+              <span>{monthLabel(mes)}</span> • {ordenadas.length} {ordenadas.length === 1 ? "carro vendido" : "carros vendidos"} • {emEstoque.length} em estoque
             </CardDescription>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             {aviso && <span className="text-sm font-medium text-emerald-700">{aviso}</span>}
             <Button onClick={copiar} disabled={ordenadas.length === 0} className="rounded-2xl bg-blue-600 hover:bg-blue-700">Copiar para WhatsApp</Button>
-            <Button variant="outline" onClick={onClose} className="rounded-2xl">Fechar</Button>
+            {onClose && <Button variant="outline" onClick={onClose} className="rounded-2xl">Fechar</Button>}
           </div>
         </div>
       </CardHeader>
@@ -1632,7 +1701,7 @@ function ResultPanel({
         <CardContent className="flex flex-col gap-3 p-5 md:flex-row md:items-center md:justify-between">
           <div>
             <p className="text-sm font-medium text-blue-700">Resultado do mês</p>
-            <p className="text-lg font-semibold capitalize text-slate-900">{monthLabel(mes)}</p>
+            <p className="text-lg font-semibold text-slate-900">{monthLabel(mes)}</p>
             <p className="text-xs text-slate-500">Vendas pela data da venda e divisão do lucro entre a loja e os proprietários.</p>
           </div>
           <div className="w-full md:w-[280px]">
@@ -1989,9 +2058,15 @@ export default function App() {
     const margemLoja = totalVendido > 0 ? (lucroLoja / totalVendido) * 100 : 0;
     const parteProprietarios = lucroRealizado - lucroLoja;
     const consignadosEstoque = stockVehicles.filter((v) => grupoDaOrigem(v.origem) !== "loja").length;
+    // Capital da loja: só próprios e trocas. Consignados ficam de fora (carro do dono; despesas saem do repasse)
+    const capitalInvestidoLoja = stockVehicles.filter((v) => grupoDaOrigem(v.origem) === "loja").reduce((sum, v) => sum + custoVeiculo(v), 0);
+    const despesasAdiantadasConsignados = stockVehicles
+      .filter((v) => grupoDaOrigem(v.origem) !== "loja")
+      .reduce((sum, v) => sum + (custoTotalPorPlaca.get(v.placa) || 0), 0);
 
     return {
       lucroPrevistoLoja, margemPrevistaLoja, lucroLoja, margemLoja, parteProprietarios, consignadosEstoque,
+      capitalInvestidoLoja, despesasAdiantadasConsignados,
       valorEstoque, custoEstoque, despesasEmEstoque, patioMedio, lucroPrevisto,
       margemMedia, garantiasAtivas, totalVendido, lucroRealizado, margemRealizada,
       stockCount: stockVehicles.length, soldCount: soldInPeriod.length,
@@ -2310,7 +2385,8 @@ export default function App() {
                 <p className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500">Estoque atual</p>
                 <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
                   <StatCard title="Veículos em estoque" value={totals.stockCount} subtitle={`${totals.consignadosEstoque} consignados • pátio médio ${Math.round(totals.patioMedio)} dias`} icon={Car} />
-                  <StatCard title="Capital investido" value={currency(totals.custoEstoque)} subtitle="Compra + despesas dos carros no pátio" icon={Wrench} />
+                  <StatCard title="Capital investido (todos os carros)" value={currency(totals.custoEstoque)} subtitle="Compra + despesas dos carros no pátio" icon={Wrench} />
+                  <StatCard title="Capital investido da loja" value={currency(totals.capitalInvestidoLoja)} subtitle={`Só próprios e trocas • + ${currency(totals.despesasAdiantadasConsignados)} adiantados em despesas de consignados`} icon={Store} valueClass="text-emerald-600" />
                   <StatCard title="Valor de venda do estoque" value={currency(totals.valorEstoque)} subtitle="Soma das vendas previstas" icon={TrendingUp} />
                   <StatCard title="Lucro previsto (todos os carros)" value={currency(totals.lucroPrevisto)} subtitle={`Venda prevista menos custo total • margem ${totals.margemMedia.toFixed(1)}%`} icon={CircleDollarSign} />
                   <StatCard title="Lucro previsto da loja" value={currency(totals.lucroPrevistoLoja)} subtitle={`Sem a parte dos proprietários • margem ${totals.margemPrevistaLoja.toFixed(1)}%`} icon={Store} valueClass="text-emerald-600" />
@@ -2410,6 +2486,8 @@ export default function App() {
               </div>
             </div>
           )}
+
+          {active === "extrato" && <OwnerStatementPage vehicles={vehicles} custoVeiculo={custoVeiculo} />}
 
           {active === "resultado" && (
             <ResultPanel
