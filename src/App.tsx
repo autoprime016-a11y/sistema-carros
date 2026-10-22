@@ -598,6 +598,7 @@ function VehicleForm({
                 <SelectContent className="max-h-72 overflow-y-auto">
                   <SelectItem value="Flex">Flex</SelectItem>
                   <SelectItem value="Gasolina">Gasolina</SelectItem>
+                  <SelectItem value="Álcool">Álcool</SelectItem>
                   <SelectItem value="Diesel">Diesel</SelectItem>
                   <SelectItem value="Elétrico">Elétrico</SelectItem>
                   <SelectItem value="Híbrido">Híbrido</SelectItem>

@@ -37,6 +37,7 @@ Dados apagados por engano só voltam pela **cópia de segurança** (Configuraç�
   O extrato (com "Gerar PDF") continua no **Resultado do mês**, tocando no card Família Carlesci, Givaldo ou Consignado (outros).
 - No **Estoque**, cada carro mostra a **origem** (Próprio, Troca, Consignado Família Carlesci, Consignado Givaldo ou Consignado (outros)),
   com a mesma cor usada no Resultado do mês.
+- Nova opção de combustível **Álcool** no cadastro do carro.
 
 ## v1.5.1 — 22/10/2026
 - **Correção do repasse** no extrato (tela e PDF): como as despesas dos consignados são pagas pelo proprietário,

@@ -19,6 +19,7 @@ export const VERSION_HISTORY: VersionEntry[] = [
     itens: [
       "Item \"Extrato por proprietário\" removido do menu; o extrato abre pelo Resultado do mês, tocando no card do proprietário",
       "Card do carro no Estoque mostra a origem (Próprio, Troca, Consignado Família Carlesci, Givaldo ou outros)",
+      "Opção de combustível Álcool no cadastro do carro",
     ],
   },
   {
