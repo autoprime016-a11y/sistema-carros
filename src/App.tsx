@@ -318,7 +318,6 @@ function AppSidebar({
   const items = [
     ["dashboard", "Dashboard", LayoutDashboard],
     ["resultado", "Resultado do mês", CircleDollarSign],
-    ["extrato", "Extrato por proprietário", FileText],
     ["cadastro", "Cadastrar veículo", PlusCircle],
     ["estoque", "Estoque", Car],
     ["despesas", "Despesas", Wrench],
@@ -1461,73 +1460,6 @@ const COR_GRUPO: Record<GrupoLucro, string> = {
   loja: "bg-blue-600", carlesci: "bg-violet-600", givaldo: "bg-teal-600", outros: "bg-slate-500", definir: "bg-amber-500",
 };
 
-// Carros vendidos de um proprietário num mês, com lucro e parte dele
-function linhasDoProprietario(vehicles: Vehicle[], custoVeiculo: (v: Vehicle) => number, mes: string, dono: GrupoLucro) {
-  return vehicles
-    .filter((v) => v.status === "Vendido" && v.dataVenda && grupoDaOrigem(v.origem) === dono && (mes === "todos" || monthKey(v.dataVenda) === mes))
-    .map((v) => {
-      const valor = Number(v.valorVenda ?? v.vendaPrevista ?? 0);
-      const lucro = valor - custoVeiculo(v);
-      return { v, lucro, parte: dividirLucro(dono, lucro)[dono], valor, despesas: custoVeiculo(v) - Number(v.compra || 0) };
-    });
-}
-
-// Tela própria do extrato: escolhe o mês e o proprietário
-function OwnerStatementPage({ vehicles, custoVeiculo }: { vehicles: Vehicle[]; custoVeiculo: (v: Vehicle) => number }) {
-  const meses = useMemo(
-    () => [...new Set(vehicles.filter((v) => v.status === "Vendido" && v.dataVenda).map((v) => monthKey(v.dataVenda)))].sort((a, b) => b.localeCompare(a)),
-    [vehicles],
-  );
-  const mesAtual = monthKey(todayISO());
-  const [mes, setMes] = useState(meses.includes(mesAtual) ? mesAtual : meses[0] || "todos");
-  const [dono, setDono] = useState<GrupoLucro>("carlesci");
-  const opcoes: GrupoLucro[] = ["carlesci", "givaldo", "outros"];
-
-  return (
-    <div className="space-y-6">
-      <Card className="rounded-3xl border-0 bg-blue-50 shadow-md shadow-slate-200/60 ring-2 ring-blue-300">
-        <CardContent className="flex flex-col gap-4 p-5">
-          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-            <div>
-              <p className="text-sm font-medium text-blue-700">Extrato por proprietário</p>
-              <p className="text-lg font-semibold text-slate-900">{NOME_GRUPO[dono]} • {monthLabel(mes)}</p>
-            </div>
-            <div className="w-full md:w-[280px]">
-              <Select value={mes} onValueChange={setMes}>
-                <SelectTrigger className="rounded-2xl border-blue-300 bg-white" data-testid="select-statement-month"><SelectValue /></SelectTrigger>
-                <SelectContent className="max-h-72 overflow-y-auto">
-                  {["todos", ...meses].map((m) => <SelectItem key={m} value={m}>{monthLabel(m)}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-          <div className="flex flex-wrap gap-2" role="tablist" aria-label="Proprietário">
-            {opcoes.map((g) => (
-              <button
-                key={g}
-                type="button"
-                role="tab"
-                aria-selected={dono === g}
-                onClick={() => setDono(g)}
-                className={`inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-semibold transition ${dono === g ? "border-blue-600 bg-blue-600 text-white" : "border-slate-200 bg-white text-slate-700 hover:border-blue-300"}`}
-              >
-                <span className={`h-2.5 w-2.5 rounded-full ${COR_GRUPO[g]}`} />{NOME_GRUPO[g]}
-              </button>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
-
-      <OwnerStatement
-        dono={dono}
-        mes={mes}
-        linhas={linhasDoProprietario(vehicles, custoVeiculo, mes, dono)}
-        emEstoque={vehicles.filter((v) => v.status !== "Vendido" && grupoDaOrigem(v.origem) === dono)}
-      />
-    </div>
-  );
-}
-
 // Extrato de um proprietário no mês: carros vendidos, parte no lucro e repasse
 // O proprietário paga as despesas, então o repasse = venda − parte da loja (= valor do carro + despesas + parte dele)
 function OwnerStatement({
@@ -2531,8 +2463,6 @@ export default function App() {
               </div>
             </div>
           )}
-
-          {active === "extrato" && <OwnerStatementPage vehicles={vehicles} custoVeiculo={custoVeiculo} />}
 
           {active === "resultado" && (
             <ResultPanel

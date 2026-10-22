@@ -2,7 +2,7 @@
 // A cada publicação: aumente APP_VERSION, acrescente a versão no topo de VERSION_HISTORY,
 // atualize "version" no package.json e registre no CHANGELOG.md.
 
-export const APP_VERSION = "1.5.1";
+export const APP_VERSION = "1.5.2";
 
 export type VersionEntry = {
   versao: string;
@@ -12,6 +12,12 @@ export type VersionEntry = {
 };
 
 export const VERSION_HISTORY: VersionEntry[] = [
+  {
+    versao: "1.5.2",
+    data: "2026-10-22",
+    titulo: "Menu sem o item Extrato por proprietário",
+    itens: ["Item \"Extrato por proprietário\" removido do menu; o extrato abre pelo Resultado do mês, tocando no card do proprietário"],
+  },
   {
     versao: "1.5.1",
     data: "2026-10-22",

@@ -32,6 +32,10 @@ Dados apagados por engano só voltam pela **cópia de segurança** (Configuraç�
 
 ---
 
+## v1.5.2 — 22/10/2026
+- Item **"Extrato por proprietário"** removido do menu lateral, por ser redundante.
+  O extrato (com "Gerar PDF") continua no **Resultado do mês**, tocando no card Família Carlesci, Givaldo ou Consignado (outros).
+
 ## v1.5.1 — 22/10/2026
 - **Correção do repasse** no extrato (tela e PDF): como as despesas dos consignados são pagas pelo proprietário,
   o repasse agora é **venda − parte da loja** (= valor do carro + despesas + parte dele no lucro).
