@@ -33,6 +33,30 @@ const TIPO_DESPESA_OPTIONS = [
   "Mecânica","Troca de óleo","Combustível","Comissão","Regularização","Outros",
 ];
 
+// Despesas operacionais da loja (estrutura de DRE): grupos e categorias
+const GRUPOS_DESPESA_OPERACIONAL: { grupo: string; categorias: string[] }[] = [
+  { grupo: "Pessoal", categorias: ["Salários", "Encargos (INSS/FGTS)", "Benefícios (VT, VR, saúde)", "Pró-labore"] },
+  { grupo: "Administrativas", categorias: ["Aluguel", "Energia", "Água", "IPTU", "Internet e telefone", "Contador", "Sistemas e assinaturas", "Manutenção da loja", "Limpeza e escritório", "Seguros"] },
+  { grupo: "Comerciais", categorias: ["Marketing e anúncios", "Portais de anúncio", "Brindes e eventos"] },
+  { grupo: "Financeiras", categorias: ["Tarifas bancárias", "Juros e IOF", "Taxas de cartão"] },
+  { grupo: "Impostos", categorias: ["Impostos sobre faturamento", "IRPJ e CSLL", "Taxas e alvarás", "Outros impostos"] },
+  { grupo: "Outras", categorias: ["Outras despesas"] },
+];
+const GRUPO_DA_CATEGORIA: Record<string, string> = Object.fromEntries(
+  GRUPOS_DESPESA_OPERACIONAL.flatMap(({ grupo, categorias }) => categorias.map((c) => [c, grupo])),
+);
+const grupoDespesaOperacional = (categoria: string) => GRUPO_DA_CATEGORIA[categoria] || "Outras";
+
+type CustoOperacional = {
+  id: number;
+  competencia: string; // AAAA-MM
+  categoria: string;
+  descricao: string;
+  valor: number;
+  data_pagamento: string | null;
+};
+type StatusCustos = "ok" | "faltando" | "erro";
+
 // Origem do carro e divisão do lucro
 const ORIGEM_OPTIONS = ["Próprio", "Troca", "Consignado Família Carlesci", "Consignado Givaldo", "Consignado (outros)"];
 type GrupoLucro = "loja" | "carlesci" | "givaldo" | "outros" | "definir";
@@ -321,6 +345,7 @@ function AppSidebar({
     ["cadastro", "Cadastrar veículo", PlusCircle],
     ["estoque", "Estoque", Car],
     ["despesas", "Despesas", Wrench],
+    ["custos", "Despesas operacionais", ClipboardList],
     ["consulta-custo", "Consulta custo", Calculator],
     ["vendas", "Registrar venda", DollarSign],
     ["garantia", "Garantia", ShieldCheck],
@@ -1626,8 +1651,10 @@ function OwnerStatement({
 }
 
 function ResultPanel({
-  vehicles, custoVeiculo, onEditVehicle, onOpenVehicle,
+  vehicles, custoVeiculo, onEditVehicle, onOpenVehicle, custos, statusCustos,
 }: {
+  custos: CustoOperacional[];
+  statusCustos: StatusCustos;
   vehicles: Vehicle[];
   custoVeiculo: (v: Vehicle) => number;
   onEditVehicle: (v: Vehicle) => void;
@@ -1635,8 +1662,8 @@ function ResultPanel({
 }) {
   const vendidos = useMemo(() => vehicles.filter((v) => v.status === "Vendido" && v.dataVenda), [vehicles]);
   const meses = useMemo(
-    () => [...new Set(vendidos.map((v) => monthKey(v.dataVenda)))].sort((a, b) => b.localeCompare(a)),
-    [vendidos],
+    () => [...new Set([...vendidos.map((v) => monthKey(v.dataVenda)), ...custos.map((c) => c.competencia)])].sort((a, b) => b.localeCompare(a)),
+    [vendidos, custos],
   );
   const mesAtual = monthKey(todayISO());
   const [mes, setMes] = useState(meses.includes(mesAtual) ? mesAtual : meses[0] || "todos");
@@ -1776,6 +1803,8 @@ function ResultPanel({
         </Card>
       </div>
 
+      <StoreResultCard mes={mes} faturamento={faturamento} lucroLoja={total.loja} custos={custos} status={statusCustos} />
+
       {dono && (
         <OwnerStatement
           dono={dono}
@@ -1824,6 +1853,298 @@ function ResultPanel({
   );
 }
 
+const mesAnterior = (mes: string) => {
+  const [a, m] = mes.split("-").map(Number);
+  const d = new Date(a, m - 2, 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+};
+
+// Opções de mês: dos lançamentos existentes + últimos 12 meses + próximo mês
+function opcoesDeMes(mesesComDados: string[]) {
+  const atual = monthKey(todayISO());
+  const set = new Set(mesesComDados);
+  let m = atual;
+  for (let i = 0; i < 12; i++) { set.add(m); m = mesAnterior(m); }
+  const [a, mm] = atual.split("-").map(Number);
+  const prox = new Date(a, mm, 1);
+  set.add(`${prox.getFullYear()}-${String(prox.getMonth() + 1).padStart(2, "0")}`);
+  return [...set].sort((x, y) => y.localeCompare(x));
+}
+
+function SqlSetupCard({ status }: { status: StatusCustos }) {
+  return (
+    <Card className="rounded-3xl border-0 bg-amber-50 shadow-md shadow-slate-200/60 ring-2 ring-amber-300" data-testid="costs-setup">
+      <CardContent className="space-y-2 p-5 text-sm text-amber-900">
+        <p className="flex items-center gap-2 font-semibold"><AlertTriangle className="h-5 w-5" />
+          {status === "faltando" ? "A tabela de despesas operacionais ainda não foi criada no banco" : "Não foi possível ler as despesas operacionais"}
+        </p>
+        {status === "faltando" ? (
+          <p>Esta tela precisa de uma tabela nova no Supabase. É só um acréscimo, que não mexe nos dados existentes. O script está no repositório em <code>supabase/custos_operacionais.sql</code>: abra o projeto no Supabase, vá em <strong>SQL Editor</strong>, cole o script e clique em <strong>Run</strong>.</p>
+        ) : (
+          <p>Verifique a internet e recarregue a página. Se continuar, confira se o script <code>supabase/custos_operacionais.sql</code> foi executado no Supabase.</p>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function OperatingCostsPanel({
+  custos, status, onReload,
+}: {
+  custos: CustoOperacional[];
+  status: StatusCustos;
+  onReload: () => Promise<void>;
+}) {
+  const meses = useMemo(() => opcoesDeMes(custos.map((c) => c.competencia)), [custos]);
+  const [mes, setMes] = useState(monthKey(todayISO()));
+  const vazio = { categoria: "Aluguel", descricao: "", valor: "", data_pagamento: "" };
+  const [form, setForm] = useState(vazio);
+  const [editando, setEditando] = useState<CustoOperacional | null>(null);
+  const [aviso, setAviso] = useState("");
+  const [salvando, setSalvando] = useState(false);
+
+  const doMes = custos.filter((c) => c.competencia === mes);
+  const total = doMes.reduce((a, c) => a + Number(c.valor || 0), 0);
+  const porGrupo = GRUPOS_DESPESA_OPERACIONAL.map(({ grupo }) => ({
+    grupo, valor: doMes.filter((c) => grupoDespesaOperacional(c.categoria) === grupo).reduce((a, c) => a + Number(c.valor || 0), 0),
+  })).filter((g) => g.valor > 0);
+  const doAnterior = custos.filter((c) => c.competencia === mesAnterior(mes));
+
+  const mostrar = (msg: string) => { setAviso(msg); setTimeout(() => setAviso(""), 3500); };
+
+  const salvar = async () => {
+    if (!Number(form.valor)) { mostrar("Informe o valor."); return; }
+    setSalvando(true);
+    const payload = {
+      competencia: mes,
+      categoria: form.categoria,
+      descricao: form.descricao.trim(),
+      valor: Number(form.valor),
+      data_pagamento: form.data_pagamento || null,
+    };
+    const { error } = editando
+      ? await supabase.from("custos_operacionais").update(payload).eq("id", editando.id)
+      : await supabase.from("custos_operacionais").insert(payload);
+    setSalvando(false);
+    if (error) { console.error(error); mostrar("Não foi possível salvar. Tente de novo."); return; }
+    setForm(vazio); setEditando(null);
+    await onReload();
+    mostrar(editando ? "Despesa corrigida." : "Despesa lançada.");
+  };
+
+  const excluir = async (c: CustoOperacional) => {
+    if (!confirm(`Excluir "${c.categoria}${c.descricao ? ` – ${c.descricao}` : ""}" de ${currency(c.valor)} em ${monthLabel(c.competencia)}?`)) return;
+    const { error } = await supabase.from("custos_operacionais").delete().eq("id", c.id);
+    if (error) { console.error(error); mostrar("Não foi possível excluir."); return; }
+    await onReload();
+    mostrar("Despesa excluída.");
+  };
+
+  const copiarAnterior = async () => {
+    if (!doAnterior.length) return;
+    if (doMes.length && !confirm(`${monthLabel(mes)} já tem ${doMes.length} lançamento(s). Copiar mesmo assim os ${doAnterior.length} de ${monthLabel(mesAnterior(mes))}?`)) return;
+    const linhas = doAnterior.map((c) => ({ competencia: mes, categoria: c.categoria, descricao: c.descricao, valor: c.valor, data_pagamento: null }));
+    const { error } = await supabase.from("custos_operacionais").insert(linhas);
+    if (error) { console.error(error); mostrar("Não foi possível copiar."); return; }
+    await onReload();
+    mostrar(`${linhas.length} despesas copiadas. Ajuste os valores que mudaram (ex.: energia, água).`);
+  };
+
+  if (status !== "ok") return <div className="space-y-6"><SqlSetupCard status={status} /></div>;
+
+  return (
+    <div className="space-y-6">
+      <Card className="rounded-3xl border-0 bg-blue-50 shadow-md shadow-slate-200/60 ring-2 ring-blue-300">
+        <CardContent className="flex flex-col gap-3 p-5 md:flex-row md:items-center md:justify-between">
+          <div>
+            <p className="text-sm font-medium text-blue-700">Despesas operacionais</p>
+            <p className="text-lg font-semibold text-slate-900">{monthLabel(mes)} • {currency(total)}</p>
+            <p className="text-xs text-slate-500">Custos para manter a loja funcionando, que não são de um carro específico.</p>
+          </div>
+          <div className="w-full md:w-[280px]">
+            <Select value={mes} onValueChange={(v) => { setMes(v); setEditando(null); setForm(vazio); }}>
+              <SelectTrigger className="rounded-2xl border-blue-300 bg-white" data-testid="select-costs-month"><SelectValue /></SelectTrigger>
+              <SelectContent className="max-h-72 overflow-y-auto">
+                {meses.map((m) => <SelectItem key={m} value={m}>{monthLabel(m)}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+        </CardContent>
+      </Card>
+
+      {porGrupo.length > 0 && (
+        <div className="grid gap-4 md:grid-cols-3 xl:grid-cols-6">
+          {porGrupo.map((g) => (
+            <Card key={g.grupo} className="rounded-3xl border-0 shadow-md shadow-slate-200/60">
+              <CardContent className="p-4">
+                <p className="text-sm text-slate-500">{g.grupo}</p>
+                <p className="mt-1 text-xl font-bold">{currency(g.valor)}</p>
+                <p className="text-xs text-slate-500">{total ? Math.round((g.valor / total) * 100) : 0}% do mês</p>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
+
+      <div className="grid gap-6 xl:grid-cols-[400px_1fr]">
+        <Card className={`rounded-3xl border-0 shadow-md shadow-slate-200/60 ${editando ? "ring-2 ring-amber-300" : ""}`}>
+          <CardHeader>
+            <CardTitle>{editando ? "Corrigir despesa" : "Lançar despesa"}</CardTitle>
+            <CardDescription>Competência: {monthLabel(mes)}</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <Label>Categoria</Label>
+              <Select value={form.categoria} onValueChange={(v) => setForm({ ...form, categoria: v })}>
+                <SelectTrigger data-testid="select-cost-category"><SelectValue /></SelectTrigger>
+                <SelectContent className="max-h-80 overflow-y-auto">
+                  {GRUPOS_DESPESA_OPERACIONAL.map(({ grupo, categorias }) => (
+                    <React.Fragment key={grupo}>
+                      <SelectItem value={`__grupo_${grupo}`} disabled className="pl-2 text-xs font-semibold uppercase tracking-wide text-slate-500">{grupo}</SelectItem>
+                      {categorias.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                    </React.Fragment>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Descrição (opcional)</Label>
+              <Input value={form.descricao} onChange={(e) => setForm({ ...form, descricao: e.target.value })} placeholder="Ex.: conta de setembro, salário do João" />
+            </div>
+            <div className="space-y-2">
+              <Label>Valor (R$)</Label>
+              <Input type="number" value={form.valor} onChange={(e) => setForm({ ...form, valor: e.target.value })} data-testid="input-cost-value" />
+            </div>
+            <div className="space-y-2">
+              <Label>Data do pagamento (opcional)</Label>
+              <Input type="date" value={form.data_pagamento} onChange={(e) => setForm({ ...form, data_pagamento: e.target.value })} />
+            </div>
+            {aviso && <p className="text-sm font-medium text-blue-700">{aviso}</p>}
+            <Button onClick={salvar} disabled={salvando} className="w-full rounded-2xl bg-blue-600 hover:bg-blue-700" data-testid="button-save-cost">
+              {salvando ? "Salvando..." : editando ? "Salvar correção" : "Lançar despesa"}
+            </Button>
+            {editando && <Button variant="outline" onClick={() => { setEditando(null); setForm(vazio); }} className="w-full rounded-2xl">Cancelar correção</Button>}
+            <p className="text-xs text-slate-500">Despesas de um carro específico (lavagem, oficina, comissão da venda) continuam na tela <strong>Despesas</strong>, para não contar duas vezes.</p>
+          </CardContent>
+        </Card>
+
+        <Card className="rounded-3xl border-0 shadow-md shadow-slate-200/60">
+          <CardHeader>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <CardTitle>Lançamentos de {monthLabel(mes)}</CardTitle>
+                <CardDescription>{doMes.length} lançamento(s) • total {currency(total)}</CardDescription>
+              </div>
+              {doAnterior.length > 0 && (
+                <Button variant="outline" onClick={copiarAnterior} className="rounded-2xl" data-testid="button-copy-previous">
+                  Copiar de {monthLabel(mesAnterior(mes))} ({doAnterior.length})
+                </Button>
+              )}
+            </div>
+          </CardHeader>
+          <CardContent>
+            {doMes.length === 0 && (
+              <p className="text-sm text-slate-500">
+                Nenhuma despesa lançada neste mês.{doAnterior.length > 0 ? " Use \"Copiar\" para trazer as despesas fixas do mês anterior e ajuste os valores." : ""}
+              </p>
+            )}
+            <div className="space-y-4">
+              {GRUPOS_DESPESA_OPERACIONAL.map(({ grupo }) => {
+                const itens = doMes.filter((c) => grupoDespesaOperacional(c.categoria) === grupo);
+                if (!itens.length) return null;
+                return (
+                  <div key={grupo}>
+                    <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">{grupo}</p>
+                    <div className="space-y-2">
+                      {itens.map((c) => (
+                        <div key={c.id} className={`flex flex-wrap items-center justify-between gap-3 rounded-2xl border p-3 ${editando?.id === c.id ? "border-amber-300 bg-amber-50" : "border-slate-100 bg-slate-50"}`}>
+                          <div className="min-w-0">
+                            <p className="font-semibold">{c.categoria}</p>
+                            <p className="text-sm text-slate-500">{c.descricao || "—"}{c.data_pagamento ? ` • pago em ${formatDateBR(c.data_pagamento)}` : ""}</p>
+                          </div>
+                          <div className="flex flex-col items-end gap-1">
+                            <p className="font-semibold text-red-500">{currency(c.valor)}</p>
+                            <div className="flex gap-3 text-sm font-medium">
+                              <button className="text-blue-600 hover:underline" onClick={() => { setEditando(c); setForm({ categoria: c.categoria, descricao: c.descricao || "", valor: String(c.valor), data_pagamento: c.data_pagamento || "" }); window.scrollTo({ top: 0, behavior: "smooth" }); }}>Corrigir</button>
+                              <button className="text-red-600 hover:underline" onClick={() => excluir(c)}>Excluir</button>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    </div>
+  );
+}
+
+// Resultado da loja no formato de DRE: lucro das vendas − despesas operacionais − impostos = lucro líquido
+function StoreResultCard({
+  mes, faturamento, lucroLoja, custos, status,
+}: {
+  mes: string;
+  faturamento: number;
+  lucroLoja: number;
+  custos: CustoOperacional[];
+  status: StatusCustos;
+}) {
+  if (status !== "ok") return <SqlSetupCard status={status} />;
+  const doPeriodo = custos.filter((c) => mes === "todos" || c.competencia === mes);
+  const somaGrupo = (g: string) => doPeriodo.filter((c) => grupoDespesaOperacional(c.categoria) === g).reduce((a, c) => a + Number(c.valor || 0), 0);
+  const gruposOperacionais = GRUPOS_DESPESA_OPERACIONAL.map((g) => g.grupo).filter((g) => g !== "Impostos");
+  const linhasOp = gruposOperacionais.map((g) => ({ g, v: somaGrupo(g) })).filter((l) => l.v > 0);
+  const despesasOp = linhasOp.reduce((a, l) => a + l.v, 0);
+  const resultadoOp = lucroLoja - despesasOp;
+  const impostos = somaGrupo("Impostos");
+  const lucroLiquido = resultadoOp - impostos;
+  const margem = faturamento > 0 ? (lucroLiquido / faturamento) * 100 : 0;
+  const cor = (v: number) => (v >= 0 ? "text-emerald-600" : "text-red-600");
+
+  const Linha = ({ label, valor, forte = false, sinal = "", recuo = false, classe = "" }: { label: string; valor: number; forte?: boolean; sinal?: string; recuo?: boolean; classe?: string }) => (
+    <div className={`flex items-center justify-between gap-4 py-2 ${forte ? "border-t text-base font-bold" : "text-sm"} ${recuo ? "pl-4 text-slate-500" : ""}`}>
+      <span>{sinal && <span className="mr-1 text-slate-400">{sinal}</span>}{label}</span>
+      <span className={`tabular-nums ${classe}`}>{currency(valor)}</span>
+    </div>
+  );
+
+  return (
+    <Card className="rounded-3xl border-0 shadow-md shadow-slate-200/60 ring-2 ring-emerald-200" data-testid="store-result">
+      <CardHeader>
+        <CardTitle>Resultado da loja</CardTitle>
+        <CardDescription>{monthLabel(mes)} • lucro da loja nas vendas menos as despesas operacionais (formato de DRE)</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <div className="grid gap-6 lg:grid-cols-[1.4fr_1fr]">
+          <div>
+            <Linha label="Lucro da loja nas vendas" valor={lucroLoja} classe={cor(lucroLoja)} />
+            <Linha label="Despesas operacionais" valor={-despesasOp} sinal="(−)" />
+            {linhasOp.map((l) => <Linha key={l.g} label={l.g} valor={-l.v} recuo />)}
+            <Linha label="Resultado operacional" valor={resultadoOp} forte classe={cor(resultadoOp)} />
+            <Linha label="Impostos" valor={-impostos} sinal="(−)" />
+            <Linha label="Lucro líquido do mês" valor={lucroLiquido} forte classe={cor(lucroLiquido)} />
+          </div>
+          <div className="space-y-3">
+            <div className="rounded-3xl bg-slate-50 p-5">
+              <p className="text-sm text-slate-500">Lucro líquido</p>
+              <p className={`mt-1 text-3xl font-bold ${cor(lucroLiquido)}`}>{currency(lucroLiquido)}</p>
+              <p className="mt-1 text-xs text-slate-500">Margem líquida de {margem.toFixed(1)}% sobre o total vendido ({currency(faturamento)})</p>
+            </div>
+            {doPeriodo.length === 0 && (
+              <p className="rounded-2xl bg-amber-50 p-3 text-sm text-amber-800">Nenhuma despesa operacional lançada {mes === "todos" ? "" : "neste mês"}. Lance em <strong>Despesas operacionais</strong> no menu para ver o lucro real.</p>
+            )}
+            <p className="text-xs text-slate-500">Impostos: use os valores que o contador informar (guias pagas no mês). O sistema não calcula impostos.</p>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 // Cópia de segurança: baixa todas as tabelas do banco num arquivo .json
 // (permite restaurar os dados se algo for apagado ou alterado por engano)
 function SettingsPanel() {
@@ -1840,6 +2161,9 @@ function SettingsPanel() {
         if (error) throw error;
         dados[t] = data || [];
       }
+      // Despesas operacionais (tabela nova): entra na cópia se já existir no banco
+      const extra = await supabase.from("custos_operacionais").select("*").order("id", { ascending: true });
+      if (!extra.error) dados.custos_operacionais = extra.data || [];
       const agora = new Date();
       const carimbo = `${todayISO()}_${String(agora.getHours()).padStart(2, "0")}h${String(agora.getMinutes()).padStart(2, "0")}`;
       const conteudo = JSON.stringify({ sistema: "Auto Prime", gerado_em: agora.toISOString(), tabelas: dados }, null, 2);
@@ -1851,7 +2175,7 @@ function SettingsPanel() {
       a.click();
       a.remove();
       setTimeout(() => URL.revokeObjectURL(url), 1000);
-      setResumo(`${dados.veiculos.length} veículos, ${dados.despesas.length} despesas, ${dados.vendas.length} vendas e ${dados.garantias.length} garantias.`);
+      setResumo(`${dados.veiculos.length} veículos, ${dados.despesas.length} despesas, ${dados.vendas.length} vendas, ${dados.garantias.length} garantias${dados.custos_operacionais ? ` e ${dados.custos_operacionais.length} despesas operacionais` : ""}.`);
       setStatus("done");
     } catch (error) {
       console.error(error);
@@ -1946,6 +2270,21 @@ export default function App() {
 
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [custos, setCustos] = useState<CustoOperacional[]>([]);
+  const [statusCustos, setStatusCustos] = useState<StatusCustos>("ok");
+
+  // Despesas operacionais: tabela opcional; se ainda não existir, as telas mostram como criar
+  async function loadCustos() {
+    const { data, error } = await supabase.from("custos_operacionais").select("*").order("competencia", { ascending: false });
+    if (error) {
+      const texto = `${error.code || ""} ${error.message || ""}`;
+      setStatusCustos(/PGRST205|42P01|does not exist|Could not find the table/i.test(texto) ? "faltando" : "erro");
+      setCustos([]);
+      return;
+    }
+    setStatusCustos("ok");
+    setCustos(((data || []) as CustoOperacional[]).map((c) => ({ ...c, valor: Number(c.valor || 0), descricao: c.descricao || "" })));
+  }
   const [isLoading, setIsLoading] = useState(true);
 
   async function loadData() {
@@ -1974,6 +2313,7 @@ export default function App() {
 
       setVehicles(vehicleRows.map((row) => mapVehicleRow(row, salesMap, warrantyMap)));
       setExpenses(expenseRows.map((row) => mapExpenseRow(row, vehicleMap)).filter((row) => row.placa));
+      await loadCustos();
     } catch (error) {
       console.error(error);
       alert("Não foi possível carregar os dados do banco.");
@@ -2471,8 +2811,12 @@ export default function App() {
             </div>
           )}
 
+          {active === "custos" && <OperatingCostsPanel custos={custos} status={statusCustos} onReload={loadCustos} />}
+
           {active === "resultado" && (
             <ResultPanel
+              custos={custos}
+              statusCustos={statusCustos}
               vehicles={vehicles}
               custoVeiculo={custoVeiculo}
               onEditVehicle={(v) => { setEditingVehicle(v); setVoltarParaResultado(true); setActive("cadastro"); window.scrollTo({ top: 0 }); }}

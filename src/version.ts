@@ -2,7 +2,7 @@
 // A cada publicação: aumente APP_VERSION, acrescente a versão no topo de VERSION_HISTORY,
 // atualize "version" no package.json e registre no CHANGELOG.md.
 
-export const APP_VERSION = "1.5.2";
+export const APP_VERSION = "1.6.0";
 
 export type VersionEntry = {
   versao: string;
@@ -12,6 +12,18 @@ export type VersionEntry = {
 };
 
 export const VERSION_HISTORY: VersionEntry[] = [
+  {
+    versao: "1.6.0",
+    data: "2026-11-02",
+    titulo: "Despesas operacionais e lucro líquido do mês",
+    itens: [
+      "Nova tela Despesas operacionais: aluguel, energia, água, IPTU, salários, pró-labore, contador, impostos etc., por mês",
+      "Categorias agrupadas como na DRE: Pessoal, Administrativas, Comerciais, Financeiras, Impostos e Outras",
+      "Botão para copiar as despesas do mês anterior (despesas fixas)",
+      "Resultado do mês: Resultado da loja = lucro da loja nas vendas − despesas operacionais − impostos = lucro líquido",
+      "Cópia de segurança inclui as despesas operacionais",
+    ],
+  },
   {
     versao: "1.5.2",
     data: "2026-10-22",

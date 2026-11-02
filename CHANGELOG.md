@@ -32,6 +32,21 @@ Dados apagados por engano só voltam pela **cópia de segurança** (Configuraç�
 
 ---
 
+## v1.6.0 — 02/11/2026 (em teste)
+**Precisa de uma tabela nova no banco** — rodar `supabase/custos_operacionais.sql` no SQL Editor do Supabase
+antes de publicar. É só um acréscimo; as versões anteriores continuam funcionando (ignoram a tabela).
+Para desfazer: `drop table public.custos_operacionais;`
+
+- Nova tela **Despesas operacionais** (menu lateral): lançar, corrigir e excluir custos da loja por mês (competência),
+  com descrição e data de pagamento opcionais.
+- Categorias agrupadas no padrão de DRE: **Pessoal** (salários, encargos, benefícios, pró-labore), **Administrativas**
+  (aluguel, energia, água, IPTU, internet, contador, sistemas, manutenção, limpeza, seguros), **Comerciais**
+  (marketing, portais de anúncio, brindes), **Financeiras** (tarifas, juros, taxas de cartão), **Impostos** e **Outras**.
+- Botão **"Copiar de <mês anterior>"** para trazer as despesas fixas e só ajustar os valores que mudaram.
+- **Resultado do mês** ganha o card **Resultado da loja**: lucro da loja nas vendas − despesas operacionais
+  = resultado operacional − impostos = **lucro líquido do mês**, com margem líquida.
+- Cópia de segurança inclui a tabela nova.
+
 ## v1.5.2 — 22/10/2026
 - Item **"Extrato por proprietário"** removido do menu lateral, por ser redundante.
   O extrato (com "Gerar PDF") continua no **Resultado do mês**, tocando no card Família Carlesci, Givaldo ou Consignado (outros).
