@@ -2,7 +2,7 @@
 // A cada publicação: aumente APP_VERSION, acrescente a versão no topo de VERSION_HISTORY,
 // atualize "version" no package.json e registre no CHANGELOG.md.
 
-export const APP_VERSION = "1.6.0";
+export const APP_VERSION = "1.7.0";
 
 export type VersionEntry = {
   versao: string;
@@ -12,6 +12,16 @@ export type VersionEntry = {
 };
 
 export const VERSION_HISTORY: VersionEntry[] = [
+  {
+    versao: "1.7.0",
+    data: "2026-11-03",
+    titulo: "Alerta de despesas duplicadas",
+    itens: [
+      "Ao lançar uma despesa com mesmo carro, mesma data e mesmo valor de outra já lançada, o sistema avisa e pergunta se quer lançar mesmo assim (não impede)",
+      "Tela Despesas mostra a lista de possíveis duplicadas: vermelho quando a categoria também é igual, amarelo quando é diferente",
+      "Cada item da lista tem Corrigir e Excluir",
+    ],
+  },
   {
     versao: "1.6.0",
     data: "2026-11-02",

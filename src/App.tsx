@@ -33,6 +33,27 @@ const TIPO_DESPESA_OPTIONS = [
   "Mecânica","Troca de óleo","Combustível","Comissão","Regularização","Outros",
 ];
 
+// Possíveis despesas duplicadas: mesmo carro, mesma data e mesmo valor.
+// "forte" quando também a categoria é igual; "atencao" quando as categorias diferem (pode ser coincidência).
+type GrupoDuplicado = { chave: string; nivel: "forte" | "atencao"; itens: Expense[] };
+const chaveDuplicidade = (veiculoId: number | string, data: string, valor: number | string) =>
+  `${veiculoId}|${(data || "").slice(0, 10)}|${Number(valor || 0).toFixed(2)}`;
+function encontrarDuplicadas(expenses: Expense[]): GrupoDuplicado[] {
+  const grupos = new Map<string, Expense[]>();
+  expenses.forEach((e) => {
+    const k = chaveDuplicidade(e.veiculoId, e.data, e.valor);
+    grupos.set(k, [...(grupos.get(k) || []), e]);
+  });
+  return [...grupos.entries()]
+    .filter(([, itens]) => itens.length > 1)
+    .map(([chave, itens]) => {
+      const categorias = itens.map((i) => i.categoria);
+      const nivel: "forte" | "atencao" = new Set(categorias).size < categorias.length ? "forte" : "atencao";
+      return { chave, nivel, itens };
+    })
+    .sort((a, b) => (a.nivel === b.nivel ? (b.itens[0].data || "").localeCompare(a.itens[0].data || "") : a.nivel === "forte" ? -1 : 1));
+}
+
 // Despesas operacionais da loja (estrutura de DRE): grupos e categorias
 const GRUPOS_DESPESA_OPERACIONAL: { grupo: string; categorias: string[] }[] = [
   { grupo: "Pessoal", categorias: ["Salários", "Encargos (INSS/FGTS)", "Benefícios (VT, VR, saúde)", "Pró-labore"] },
@@ -745,97 +766,135 @@ function ExpensesPanel({
     }
   };
 
-  return (
-    <div className="grid gap-6 xl:grid-cols-[420px_1fr]">
-      <Card className={`rounded-3xl border-0 shadow-md shadow-slate-200/60 ${editingExpense ? "ring-2 ring-amber-300" : ""}`}>
-        <CardHeader>
-          <CardTitle>{editingExpense ? "Corrigir despesa" : "Lançar despesa"}</CardTitle>
-          <CardDescription>{editingExpense ? "Altere os campos e salve. A despesa original será substituída." : "Controle de custos por veículo."}</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="space-y-2">
-            <Label>Placa</Label>
-            <Select value={form.placa} onValueChange={(value) => setForm({ ...form, placa: value })}>
-              <SelectTrigger data-testid="select-placa-expense"><SelectValue placeholder="Selecione a placa" /></SelectTrigger>
-              <SelectContent className="max-h-72 overflow-y-auto">
-                {vehicles.map((v) => (
-                  <SelectItem key={v.placa} value={v.placa}>{v.placa} - {v.marca} {v.modelo}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-2">
-            <Label>Categoria</Label>
-            <Select value={form.categoria} onValueChange={(value) => setForm({ ...form, categoria: value })}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent className="max-h-72 overflow-y-auto">
-                {TIPO_DESPESA_OPTIONS.map((opt) => <SelectItem key={opt} value={opt}>{opt}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-2">
-            <Label>Valor</Label>
-            <Input data-testid="input-valor-expense" type="number" value={form.valor} onChange={(e) => setForm({ ...form, valor: e.target.value })} />
-          </div>
-          <div className="space-y-2">
-            <Label>Data</Label>
-            <Input type="date" value={form.data} onChange={(e) => setForm({ ...form, data: e.target.value })} />
-          </div>
-          <div className="space-y-2">
-            <Label>Descrição</Label>
-            <Input data-testid="input-descricao-expense" value={form.descricao} onChange={(e) => setForm({ ...form, descricao: e.target.value })} />
-          </div>
-          {aviso && <p className="text-sm font-medium text-red-600">{aviso}</p>}
-          <Button data-testid="button-save-expense" onClick={save} className="w-full rounded-2xl bg-blue-600 hover:bg-blue-700">
-            {editingExpense ? "Salvar correção" : "Lançar despesa"}
-          </Button>
-          {editingExpense && (
-            <Button variant="outline" onClick={cancelar} className="w-full rounded-2xl">
-              Cancelar correção
-            </Button>
-          )}
-        </CardContent>
-      </Card>
+  const duplicadas = useMemo(() => encontrarDuplicadas(expenses), [expenses]);
+  const fortes = duplicadas.filter((g) => g.nivel === "forte").length;
 
-      <Card className="rounded-3xl border-0 shadow-md shadow-slate-200/60">
-        <CardHeader><CardTitle>Histórico de despesas</CardTitle></CardHeader>
-        <CardContent>
-          {expenses.length === 0 ? (
-            <p className="text-slate-500">Nenhuma despesa lançada.</p>
-          ) : (
+  return (
+    <div className="space-y-6">
+      {duplicadas.length > 0 && (
+        <Card className={`rounded-3xl border-0 shadow-md shadow-slate-200/60 ring-2 ${fortes ? "bg-red-50 ring-red-200" : "bg-amber-50 ring-amber-300"}`} data-testid="duplicate-expenses">
+          <CardContent className="space-y-3 p-5">
+            <div className={`flex items-center gap-2 font-semibold ${fortes ? "text-red-800" : "text-amber-800"}`}>
+              <AlertTriangle className="h-5 w-5" />
+              {duplicadas.length === 1 ? "1 possível lançamento duplicado" : `${duplicadas.length} possíveis lançamentos duplicados`}
+            </div>
+            <p className="text-sm text-slate-600">Mesmo carro, mesma data e mesmo valor. <strong className="text-red-700">Vermelho</strong>: também a mesma categoria, quase sempre é duplicada. <strong className="text-amber-700">Amarelo</strong>: categorias diferentes, pode ser coincidência. Confira e corrija ou exclua se for o caso.</p>
             <div className="space-y-3">
-              {expenses.map((e) => (
-                <div
-                  key={e.id}
-                  data-testid={`expense-row-${e.id}`}
-                  className={`flex items-center justify-between gap-4 rounded-2xl border p-4 ${editingExpense?.id === e.id ? "border-amber-300 bg-amber-50" : "border-slate-100 bg-slate-50"}`}
-                >
-                  <div className="min-w-0">
-                    <p className="font-semibold">{e.placa} — {e.categoria}</p>
-                    <p className="text-sm text-slate-500">{formatDateBR(e.data)}{e.descricao ? ` • ${e.descricao}` : ""}</p>
-                  </div>
-                  <div className="flex shrink-0 flex-col items-end gap-1">
-                    <p className="text-lg font-semibold text-red-500">{currency(e.valor)}</p>
-                    <div className="flex gap-3 text-sm font-medium">
-                      <button className="text-blue-600 hover:underline" onClick={() => { onStartEdit(e); window.scrollTo({ top: 0, behavior: "smooth" }); }}>
-                        Corrigir
-                      </button>
-                      <button
-                        className="text-red-600 hover:underline"
-                        onClick={() => {
-                          if (confirm(`Excluir a despesa de ${currency(e.valor)} (${e.categoria}) do veículo ${e.placa}?`)) onDeleteExpense(e);
-                        }}
-                      >
-                        Excluir
-                      </button>
-                    </div>
+              {duplicadas.map((g) => (
+                <div key={g.chave} className={`rounded-2xl border bg-white p-3 ${g.nivel === "forte" ? "border-red-200" : "border-amber-200"}`}>
+                  <p className="text-sm font-semibold">
+                    <span className={`mr-2 inline-block rounded-full px-2 py-0.5 text-xs font-bold text-white ${g.nivel === "forte" ? "bg-red-600" : "bg-amber-500"}`}>{g.nivel === "forte" ? "Provável duplicada" : "Atenção"}</span>
+                    {g.itens[0].placa} • {formatDateBR(g.itens[0].data)} • {currency(g.itens[0].valor)} cada
+                  </p>
+                  <div className="mt-2 space-y-1">
+                    {g.itens.map((e) => (
+                      <div key={e.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-slate-50 px-3 py-2 text-sm">
+                        <span>{e.categoria}{e.descricao ? ` — ${e.descricao}` : ""}</span>
+                        <span className="flex gap-3 font-medium">
+                          <button className="text-blue-600 hover:underline" onClick={() => { onStartEdit(e); window.scrollTo({ top: 0, behavior: "smooth" }); }}>Corrigir</button>
+                          <button className="text-red-600 hover:underline" onClick={() => { if (confirm(`Excluir a despesa de ${currency(e.valor)} (${e.categoria}) do veículo ${e.placa}?`)) onDeleteExpense(e); }}>Excluir</button>
+                        </span>
+                      </div>
+                    ))}
                   </div>
                 </div>
               ))}
             </div>
-          )}
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+      )}
+
+      <div className="grid gap-6 xl:grid-cols-[420px_1fr]">
+        <Card className={`rounded-3xl border-0 shadow-md shadow-slate-200/60 ${editingExpense ? "ring-2 ring-amber-300" : ""}`}>
+          <CardHeader>
+            <CardTitle>{editingExpense ? "Corrigir despesa" : "Lançar despesa"}</CardTitle>
+            <CardDescription>{editingExpense ? "Altere os campos e salve. A despesa original será substituída." : "Controle de custos por veículo."}</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <Label>Placa</Label>
+              <Select value={form.placa} onValueChange={(value) => setForm({ ...form, placa: value })}>
+                <SelectTrigger data-testid="select-placa-expense"><SelectValue placeholder="Selecione a placa" /></SelectTrigger>
+                <SelectContent className="max-h-72 overflow-y-auto">
+                  {vehicles.map((v) => (
+                    <SelectItem key={v.placa} value={v.placa}>{v.placa} - {v.marca} {v.modelo}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Categoria</Label>
+              <Select value={form.categoria} onValueChange={(value) => setForm({ ...form, categoria: value })}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent className="max-h-72 overflow-y-auto">
+                  {TIPO_DESPESA_OPTIONS.map((opt) => <SelectItem key={opt} value={opt}>{opt}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Valor</Label>
+              <Input data-testid="input-valor-expense" type="number" value={form.valor} onChange={(e) => setForm({ ...form, valor: e.target.value })} />
+            </div>
+            <div className="space-y-2">
+              <Label>Data</Label>
+              <Input type="date" value={form.data} onChange={(e) => setForm({ ...form, data: e.target.value })} />
+            </div>
+            <div className="space-y-2">
+              <Label>Descrição</Label>
+              <Input data-testid="input-descricao-expense" value={form.descricao} onChange={(e) => setForm({ ...form, descricao: e.target.value })} />
+            </div>
+            {aviso && <p className="text-sm font-medium text-red-600">{aviso}</p>}
+            <Button data-testid="button-save-expense" onClick={save} className="w-full rounded-2xl bg-blue-600 hover:bg-blue-700">
+              {editingExpense ? "Salvar correção" : "Lançar despesa"}
+            </Button>
+            {editingExpense && (
+              <Button variant="outline" onClick={cancelar} className="w-full rounded-2xl">
+                Cancelar correção
+              </Button>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card className="rounded-3xl border-0 shadow-md shadow-slate-200/60">
+          <CardHeader><CardTitle>Histórico de despesas</CardTitle></CardHeader>
+          <CardContent>
+            {expenses.length === 0 ? (
+              <p className="text-slate-500">Nenhuma despesa lançada.</p>
+            ) : (
+              <div className="space-y-3">
+                {expenses.map((e) => (
+                  <div
+                    key={e.id}
+                    data-testid={`expense-row-${e.id}`}
+                    className={`flex items-center justify-between gap-4 rounded-2xl border p-4 ${editingExpense?.id === e.id ? "border-amber-300 bg-amber-50" : "border-slate-100 bg-slate-50"}`}
+                  >
+                    <div className="min-w-0">
+                      <p className="font-semibold">{e.placa} — {e.categoria}</p>
+                      <p className="text-sm text-slate-500">{formatDateBR(e.data)}{e.descricao ? ` • ${e.descricao}` : ""}</p>
+                    </div>
+                    <div className="flex shrink-0 flex-col items-end gap-1">
+                      <p className="text-lg font-semibold text-red-500">{currency(e.valor)}</p>
+                      <div className="flex gap-3 text-sm font-medium">
+                        <button className="text-blue-600 hover:underline" onClick={() => { onStartEdit(e); window.scrollTo({ top: 0, behavior: "smooth" }); }}>
+                          Corrigir
+                        </button>
+                        <button
+                          className="text-red-600 hover:underline"
+                          onClick={() => {
+                            if (confirm(`Excluir a despesa de ${currency(e.valor)} (${e.categoria}) do veículo ${e.placa}?`)) onDeleteExpense(e);
+                          }}
+                        >
+                          Excluir
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
     </div>
   );
 }
@@ -2454,6 +2513,18 @@ export default function App() {
     try {
       const vehicle = vehicles.find((v) => v.placa === form.placa);
       if (!vehicle) throw new Error("Veículo não encontrado para essa placa.");
+
+      // Alerta (não bloqueia): já existe despesa do mesmo carro, na mesma data e com o mesmo valor?
+      const chave = chaveDuplicidade(vehicle.id, form.data, form.valor);
+      const iguais = expenses.filter((e) => e.id !== id && chaveDuplicidade(e.veiculoId, e.data, e.valor) === chave);
+      if (iguais.length > 0) {
+        const lista = iguais.map((e) => `• ${e.categoria}${e.descricao ? ` — ${e.descricao}` : ""}`).join("\n");
+        const mesmaCategoria = iguais.some((e) => e.categoria === form.categoria);
+        const msg = `${mesmaCategoria ? "ATENÇÃO: provável lançamento duplicado." : "Atenção: possível lançamento duplicado."}\n\n` +
+          `Já existe ${iguais.length === 1 ? "uma despesa" : `${iguais.length} despesas`} de ${currency(Number(form.valor))} no ${vehicle.placa} em ${formatDateBR(form.data)}:\n${lista}\n\n` +
+          "Lançar mesmo assim?";
+        if (!confirm(msg)) return false;
+      }
 
       const payload = {
         veiculo_id: Number(vehicle.id),

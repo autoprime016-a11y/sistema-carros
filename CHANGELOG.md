@@ -32,7 +32,15 @@ Dados apagados por engano só voltam pela **cópia de segurança** (Configuraç�
 
 ---
 
-## v1.6.0 — 02/11/2026 (em teste)
+## v1.7.0 — 03/11/2026 (em teste)
+Sem mudança no banco.
+- **Alerta de despesa duplicada ao lançar**: se já existe despesa do mesmo carro, na mesma data e com o mesmo valor,
+  aparece um aviso com a despesa já lançada e a pergunta "Lançar mesmo assim?". Não impede o lançamento.
+- Na tela **Despesas**, card **"Possíveis lançamentos duplicados"** no topo (só aparece quando há algum):
+  **vermelho** = mesma categoria também (quase sempre duplicada); **amarelo** = categorias diferentes (pode ser coincidência).
+  Cada despesa tem **Corrigir** e **Excluir**.
+
+## v1.6.0 — 02/11/2026
 **Precisa de uma tabela nova no banco** — rodar `supabase/custos_operacionais.sql` no SQL Editor do Supabase
 antes de publicar. É só um acréscimo; as versões anteriores continuam funcionando (ignoram a tabela).
 Para desfazer: `drop table public.custos_operacionais;`
