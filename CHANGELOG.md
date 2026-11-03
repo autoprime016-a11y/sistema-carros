@@ -32,7 +32,15 @@ Dados apagados por engano só voltam pela **cópia de segurança** (Configuraç�
 
 ---
 
-## v1.7.1 — 03/11/2026 (em teste)
+## v1.7.2 — 03/11/2026 (em teste)
+Sem mudança no banco.
+- **Despesas operacionais**: o formulário ganhou o campo **"Mês da despesa (competência)"**. Antes o mês vinha só do seletor
+  no topo da tela, e despesas retroativas acabavam caindo no mês atual.
+- Aviso ao salvar quando a **data do pagamento** é de outro mês ("vai contar em novembro, mas foi paga em 31/03"). Não impede.
+- **Corrigir** permite trocar o mês de uma despesa já lançada. Depois de salvar, a tela vai para o mês onde a despesa ficou.
+- Seletor de meses vai até 24 meses para trás.
+
+## v1.7.1 — 03/11/2026
 **Tabela nova no banco** — `supabase/despesas_validadas.sql` (só acréscimo). Para desfazer: `drop table public.despesas_validadas;`
 - Botão **"Manter as duas (não é duplicada)"** em cada grupo do card de possíveis duplicadas. O grupo some do aviso
   e fica registrado como conferido no banco (vale para qualquer computador ou celular).

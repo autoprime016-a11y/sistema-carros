@@ -2,7 +2,7 @@
 // A cada publicação: aumente APP_VERSION, acrescente a versão no topo de VERSION_HISTORY,
 // atualize "version" no package.json e registre no CHANGELOG.md.
 
-export const APP_VERSION = "1.7.1";
+export const APP_VERSION = "1.7.2";
 
 export type VersionEntry = {
   versao: string;
@@ -12,6 +12,17 @@ export type VersionEntry = {
 };
 
 export const VERSION_HISTORY: VersionEntry[] = [
+  {
+    versao: "1.7.2",
+    data: "2026-11-03",
+    titulo: "Mês da despesa operacional no formulário",
+    itens: [
+      "Campo \"Mês da despesa (competência)\" no formulário de despesas operacionais, para lançar meses passados",
+      "Aviso quando a data do pagamento é de um mês diferente do mês da despesa (não impede)",
+      "Ao corrigir uma despesa operacional dá para trocar o mês dela",
+      "Lista de meses vai até 24 meses para trás",
+    ],
+  },
   {
     versao: "1.7.1",
     data: "2026-11-03",

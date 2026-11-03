@@ -1937,7 +1937,7 @@ function opcoesDeMes(mesesComDados: string[]) {
   const atual = monthKey(todayISO());
   const set = new Set(mesesComDados);
   let m = atual;
-  for (let i = 0; i < 12; i++) { set.add(m); m = mesAnterior(m); }
+  for (let i = 0; i < 24; i++) { set.add(m); m = mesAnterior(m); }
   const [a, mm] = atual.split("-").map(Number);
   const prox = new Date(a, mm, 1);
   set.add(`${prox.getFullYear()}-${String(prox.getMonth() + 1).padStart(2, "0")}`);
@@ -1970,7 +1970,8 @@ function OperatingCostsPanel({
 }) {
   const meses = useMemo(() => opcoesDeMes(custos.map((c) => c.competencia)), [custos]);
   const [mes, setMes] = useState(monthKey(todayISO()));
-  const vazio = { categoria: "Aluguel", descricao: "", valor: "", data_pagamento: "" };
+  const vazioDe = (competencia: string) => ({ competencia, categoria: "Aluguel", descricao: "", valor: "", data_pagamento: "" });
+  const vazio = vazioDe(mes);
   const [form, setForm] = useState(vazio);
   const [editando, setEditando] = useState<CustoOperacional | null>(null);
   const [aviso, setAviso] = useState("");
@@ -1987,9 +1988,18 @@ function OperatingCostsPanel({
 
   const salvar = async () => {
     if (!Number(form.valor)) { mostrar("Informe o valor."); return; }
+    const competencia = form.competencia || mes;
+    // Alerta (não bloqueia): pagamento em mês diferente do mês da despesa (ex.: lançamento retroativo esquecendo de trocar o mês)
+    if (form.data_pagamento && monthKey(form.data_pagamento) !== competencia) {
+      const ok = confirm(
+        `Esta despesa vai contar em ${monthLabel(competencia)}, mas a data do pagamento é ${formatDateBR(form.data_pagamento)} (${monthLabel(monthKey(form.data_pagamento))}).\n\n` +
+        `OK = manter em ${monthLabel(competencia)}\nCancelar = voltar e trocar o "Mês da despesa"`
+      );
+      if (!ok) return;
+    }
     setSalvando(true);
     const payload = {
-      competencia: mes,
+      competencia,
       categoria: form.categoria,
       descricao: form.descricao.trim(),
       valor: Number(form.valor),
@@ -2000,9 +2010,9 @@ function OperatingCostsPanel({
       : await supabase.from("custos_operacionais").insert(payload);
     setSalvando(false);
     if (error) { console.error(error); mostrar("Não foi possível salvar. Tente de novo."); return; }
-    setForm(vazio); setEditando(null);
+    setMes(competencia); setForm(vazioDe(competencia)); setEditando(null);
     await onReload();
-    mostrar(editando ? "Despesa corrigida." : "Despesa lançada.");
+    mostrar(`${editando ? "Despesa corrigida" : "Despesa lançada"} em ${monthLabel(competencia)}.`);
   };
 
   const excluir = async (c: CustoOperacional) => {
@@ -2035,7 +2045,7 @@ function OperatingCostsPanel({
             <p className="text-xs text-slate-500">Custos para manter a loja funcionando, que não são de um carro específico.</p>
           </div>
           <div className="w-full md:w-[280px]">
-            <Select value={mes} onValueChange={(v) => { setMes(v); setEditando(null); setForm(vazio); }}>
+            <Select value={mes} onValueChange={(v) => { setMes(v); setEditando(null); setForm(vazioDe(v)); }}>
               <SelectTrigger className="rounded-2xl border-blue-300 bg-white" data-testid="select-costs-month"><SelectValue /></SelectTrigger>
               <SelectContent className="max-h-72 overflow-y-auto">
                 {meses.map((m) => <SelectItem key={m} value={m}>{monthLabel(m)}</SelectItem>)}
@@ -2063,9 +2073,19 @@ function OperatingCostsPanel({
         <Card className={`rounded-3xl border-0 shadow-md shadow-slate-200/60 ${editando ? "ring-2 ring-amber-300" : ""}`}>
           <CardHeader>
             <CardTitle>{editando ? "Corrigir despesa" : "Lançar despesa"}</CardTitle>
-            <CardDescription>Competência: {monthLabel(mes)}</CardDescription>
+            <CardDescription>A despesa conta no resultado do mês escolhido abaixo.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <Label>Mês da despesa (competência)</Label>
+              <Select value={form.competencia || mes} onValueChange={(v) => setForm({ ...form, competencia: v })}>
+                <SelectTrigger className="border-blue-300 font-semibold" data-testid="select-cost-competence"><SelectValue /></SelectTrigger>
+                <SelectContent className="max-h-72 overflow-y-auto">
+                  {meses.map((m) => <SelectItem key={m} value={m}>{monthLabel(m)}</SelectItem>)}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-slate-500">Lançando um mês passado? Troque aqui (ex.: aluguel de março lançado hoje = Março).</p>
+            </div>
             <div className="space-y-2">
               <Label>Categoria</Label>
               <Select value={form.categoria} onValueChange={(v) => setForm({ ...form, categoria: v })}>
@@ -2096,7 +2116,7 @@ function OperatingCostsPanel({
             <Button onClick={salvar} disabled={salvando} className="w-full rounded-2xl bg-blue-600 hover:bg-blue-700" data-testid="button-save-cost">
               {salvando ? "Salvando..." : editando ? "Salvar correção" : "Lançar despesa"}
             </Button>
-            {editando && <Button variant="outline" onClick={() => { setEditando(null); setForm(vazio); }} className="w-full rounded-2xl">Cancelar correção</Button>}
+            {editando && <Button variant="outline" onClick={() => { setEditando(null); setForm(vazioDe(mes)); }} className="w-full rounded-2xl">Cancelar correção</Button>}
             <p className="text-xs text-slate-500">Despesas de um carro específico (lavagem, oficina, comissão da venda) continuam na tela <strong>Despesas</strong>, para não contar duas vezes.</p>
           </CardContent>
         </Card>
@@ -2138,7 +2158,7 @@ function OperatingCostsPanel({
                           <div className="flex flex-col items-end gap-1">
                             <p className="font-semibold text-red-500">{currency(c.valor)}</p>
                             <div className="flex gap-3 text-sm font-medium">
-                              <button className="text-blue-600 hover:underline" onClick={() => { setEditando(c); setForm({ categoria: c.categoria, descricao: c.descricao || "", valor: String(c.valor), data_pagamento: c.data_pagamento || "" }); window.scrollTo({ top: 0, behavior: "smooth" }); }}>Corrigir</button>
+                              <button className="text-blue-600 hover:underline" onClick={() => { setEditando(c); setForm({ competencia: c.competencia, categoria: c.categoria, descricao: c.descricao || "", valor: String(c.valor), data_pagamento: c.data_pagamento || "" }); window.scrollTo({ top: 0, behavior: "smooth" }); }}>Corrigir</button>
                               <button className="text-red-600 hover:underline" onClick={() => excluir(c)}>Excluir</button>
                             </div>
                           </div>
