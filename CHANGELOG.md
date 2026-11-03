@@ -32,7 +32,14 @@ Dados apagados por engano só voltam pela **cópia de segurança** (Configuraç�
 
 ---
 
-## v1.7.0 — 03/11/2026 (em teste)
+## v1.7.1 — 03/11/2026 (em teste)
+**Tabela nova no banco** — `supabase/despesas_validadas.sql` (só acréscimo). Para desfazer: `drop table public.despesas_validadas;`
+- Botão **"Manter as duas (não é duplicada)"** em cada grupo do card de possíveis duplicadas. O grupo some do aviso
+  e fica registrado como conferido no banco (vale para qualquer computador ou celular).
+- Se entrar outra despesa igual no mesmo carro e data, o grupo muda e o aviso volta.
+- Cópia de segurança inclui a tabela nova.
+
+## v1.7.0 — 03/11/2026
 Sem mudança no banco.
 - **Alerta de despesa duplicada ao lançar**: se já existe despesa do mesmo carro, na mesma data e com o mesmo valor,
   aparece um aviso com a despesa já lançada e a pergunta "Lançar mesmo assim?". Não impede o lançamento.

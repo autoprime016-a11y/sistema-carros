@@ -36,6 +36,8 @@ const TIPO_DESPESA_OPTIONS = [
 // Possíveis despesas duplicadas: mesmo carro, mesma data e mesmo valor.
 // "forte" quando também a categoria é igual; "atencao" quando as categorias diferem (pode ser coincidência).
 type GrupoDuplicado = { chave: string; nivel: "forte" | "atencao"; itens: Expense[] };
+// Assinatura de um grupo conferido: os ids das despesas, em ordem. Se entrar outra despesa igual, a assinatura muda e o alerta volta.
+const assinaturaGrupo = (g: GrupoDuplicado) => g.itens.map((e) => Number(e.id)).sort((a, b) => a - b).join("-");
 const chaveDuplicidade = (veiculoId: number | string, data: string, valor: number | string) =>
   `${veiculoId}|${(data || "").slice(0, 10)}|${Number(valor || 0).toFixed(2)}`;
 function encontrarDuplicadas(expenses: Expense[]): GrupoDuplicado[] {
@@ -715,9 +717,13 @@ function ExpensesPanel({
   editingExpense,
   onStartEdit,
   onClearEditing,
+  validadas,
+  onValidar,
 }: {
   expenses: Expense[];
   vehicles: Vehicle[];
+  validadas: Set<string>;
+  onValidar: (assinatura: string) => Promise<void>;
   onSaveExpense: (data: Record<string, string>, id?: number) => Promise<boolean>;
   onDeleteExpense: (expense: Expense) => void;
   initialPlate?: string;
@@ -766,7 +772,7 @@ function ExpensesPanel({
     }
   };
 
-  const duplicadas = useMemo(() => encontrarDuplicadas(expenses), [expenses]);
+  const duplicadas = useMemo(() => encontrarDuplicadas(expenses).filter((g) => !validadas.has(assinaturaGrupo(g))), [expenses, validadas]);
   const fortes = duplicadas.filter((g) => g.nivel === "forte").length;
 
   return (
@@ -778,7 +784,7 @@ function ExpensesPanel({
               <AlertTriangle className="h-5 w-5" />
               {duplicadas.length === 1 ? "1 possível lançamento duplicado" : `${duplicadas.length} possíveis lançamentos duplicados`}
             </div>
-            <p className="text-sm text-slate-600">Mesmo carro, mesma data e mesmo valor. <strong className="text-red-700">Vermelho</strong>: também a mesma categoria, quase sempre é duplicada. <strong className="text-amber-700">Amarelo</strong>: categorias diferentes, pode ser coincidência. Confira e corrija ou exclua se for o caso.</p>
+            <p className="text-sm text-slate-600">Mesmo carro, mesma data e mesmo valor. <strong className="text-red-700">Vermelho</strong>: também a mesma categoria, quase sempre é duplicada. <strong className="text-amber-700">Amarelo</strong>: categorias diferentes, pode ser coincidência. Confira e corrija ou exclua se for o caso. Se estiver tudo certo, toque em <strong>Manter as duas</strong> e o aviso some.</p>
             <div className="space-y-3">
               {duplicadas.map((g) => (
                 <div key={g.chave} className={`rounded-2xl border bg-white p-3 ${g.nivel === "forte" ? "border-red-200" : "border-amber-200"}`}>
@@ -796,6 +802,14 @@ function ExpensesPanel({
                         </span>
                       </div>
                     ))}
+                  </div>
+                  <div className="mt-2 flex justify-end">
+                    <button
+                      className="rounded-xl border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-sm font-semibold text-emerald-700 hover:bg-emerald-100"
+                      onClick={() => onValidar(assinaturaGrupo(g))}
+                    >
+                      ✓ {g.itens.length === 2 ? "Manter as duas (não é duplicada)" : `Manter as ${g.itens.length} (não é duplicada)`}
+                    </button>
                   </div>
                 </div>
               ))}
@@ -2223,6 +2237,8 @@ function SettingsPanel() {
       // Despesas operacionais (tabela nova): entra na cópia se já existir no banco
       const extra = await supabase.from("custos_operacionais").select("*").order("id", { ascending: true });
       if (!extra.error) dados.custos_operacionais = extra.data || [];
+      const validadas = await supabase.from("despesas_validadas").select("*");
+      if (!validadas.error) dados.despesas_validadas = validadas.data || [];
       const agora = new Date();
       const carimbo = `${todayISO()}_${String(agora.getHours()).padStart(2, "0")}h${String(agora.getMinutes()).padStart(2, "0")}`;
       const conteudo = JSON.stringify({ sistema: "Auto Prime", gerado_em: agora.toISOString(), tabelas: dados }, null, 2);
@@ -2344,6 +2360,26 @@ export default function App() {
     setStatusCustos("ok");
     setCustos(((data || []) as CustoOperacional[]).map((c) => ({ ...c, valor: Number(c.valor || 0), descricao: c.descricao || "" })));
   }
+  // Grupos de despesas iguais já conferidos como corretos (tabela despesas_validadas).
+  // Se a tabela não existir, guarda só neste navegador.
+  const [validadas, setValidadas] = useState<Set<string>>(new Set());
+  const [validadasNoBanco, setValidadasNoBanco] = useState(true);
+  const lerValidadasLocal = (): string[] => { try { return JSON.parse(localStorage.getItem("despesas_validadas") || "[]"); } catch { return []; } };
+  async function loadValidadas() {
+    const { data, error } = await supabase.from("despesas_validadas").select("assinatura");
+    if (error) { setValidadasNoBanco(false); setValidadas(new Set(lerValidadasLocal())); return; }
+    setValidadasNoBanco(true);
+    setValidadas(new Set(((data || []) as { assinatura: string }[]).map((r) => r.assinatura)));
+  }
+  async function handleValidar(assinatura: string) {
+    if (validadasNoBanco) {
+      const { error } = await supabase.from("despesas_validadas").upsert({ assinatura });
+      if (error) { alert(`Não foi possível marcar como conferida: ${error.message}`); return; }
+    } else {
+      try { localStorage.setItem("despesas_validadas", JSON.stringify([...new Set([...lerValidadasLocal(), assinatura])])); } catch { /* sem armazenamento */ }
+    }
+    setValidadas((atual) => new Set([...atual, assinatura]));
+  }
   const [isLoading, setIsLoading] = useState(true);
 
   async function loadData() {
@@ -2373,6 +2409,7 @@ export default function App() {
       setVehicles(vehicleRows.map((row) => mapVehicleRow(row, salesMap, warrantyMap)));
       setExpenses(expenseRows.map((row) => mapExpenseRow(row, vehicleMap)).filter((row) => row.placa));
       await loadCustos();
+      await loadValidadas();
     } catch (error) {
       console.error(error);
       alert("Não foi possível carregar os dados do banco.");
@@ -2913,6 +2950,8 @@ export default function App() {
               editingExpense={editingExpense}
               onStartEdit={handleStartEditExpense}
               onClearEditing={() => setEditingExpense(null)}
+              validadas={validadas}
+              onValidar={handleValidar}
             />
           )}
 

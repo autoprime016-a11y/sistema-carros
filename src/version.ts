@@ -2,7 +2,7 @@
 // A cada publicação: aumente APP_VERSION, acrescente a versão no topo de VERSION_HISTORY,
 // atualize "version" no package.json e registre no CHANGELOG.md.
 
-export const APP_VERSION = "1.7.0";
+export const APP_VERSION = "1.7.1";
 
 export type VersionEntry = {
   versao: string;
@@ -12,6 +12,15 @@ export type VersionEntry = {
 };
 
 export const VERSION_HISTORY: VersionEntry[] = [
+  {
+    versao: "1.7.1",
+    data: "2026-11-03",
+    titulo: "Manter despesas iguais já conferidas",
+    itens: [
+      "Botão \"Manter as duas (não é duplicada)\" em cada grupo de possíveis duplicadas: o grupo sai do aviso e fica guardado como conferido",
+      "Se depois entrar mais uma despesa igual no mesmo carro e data, o aviso volta",
+    ],
+  },
   {
     versao: "1.7.0",
     data: "2026-11-03",
