@@ -2,7 +2,7 @@
 // A cada publicação: aumente APP_VERSION, acrescente a versão no topo de VERSION_HISTORY,
 // atualize "version" no package.json e registre no CHANGELOG.md.
 
-export const APP_VERSION = "1.7.2";
+export const APP_VERSION = "1.7.3";
 
 export type VersionEntry = {
   versao: string;
@@ -12,6 +12,16 @@ export type VersionEntry = {
 };
 
 export const VERSION_HISTORY: VersionEntry[] = [
+  {
+    versao: "1.7.3",
+    data: "2026-11-07",
+    titulo: "Estoque: botão Só próprios",
+    itens: [
+      "Campos de data removidos da tela Estoque",
+      "Botão \"Só próprios\": quando ligado, mostra só os carros da loja (Próprio e Troca), sem os consignados",
+      "Quantidade de carros mostrada no topo da lista",
+    ],
+  },
   {
     versao: "1.7.2",
     data: "2026-11-03",

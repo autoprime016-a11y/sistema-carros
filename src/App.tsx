@@ -1273,8 +1273,8 @@ function StockPage({ vehicles, onSelectVehicle }: { vehicles: Vehicle[]; onSelec
   const [query, setQuery] = useState("");
   // Ao abrir o Estoque, mostra por padrão só os carros que estão no pátio
   const [statusFilter, setStatusFilter] = useState("Em estoque");
-  const [dateFrom, setDateFrom] = useState("");
-  const [dateTo, setDateTo] = useState("");
+  // Botão "Só próprios": mostra apenas os carros da loja (Próprio e Troca), sem os consignados
+  const [soProprios, setSoProprios] = useState(false);
 
   const filtered = useMemo(() => {
     return vehicles
@@ -1283,16 +1283,9 @@ function StockPage({ vehicles, onSelectVehicle }: { vehicles: Vehicle[]; onSelec
         const q = query.toLowerCase();
         return !q || [v.id, v.placa, v.marca, v.modelo].some((x) => String(x).toLowerCase().includes(q));
       })
-      .filter((v) => {
-        if (!dateFrom && !dateTo) return true;
-        if (!v.dataCompra) return false;
-        const current = v.dataCompra.slice(0, 10);
-        const fromOk = !dateFrom || current >= dateFrom;
-        const toOk = !dateTo || current <= dateTo;
-        return fromOk && toOk;
-      })
+      .filter((v) => !soProprios || grupoDaOrigem(v.origem) === "loja")
       .sort((a, b) => a.marca.localeCompare(b.marca, "pt-BR") || a.modelo.localeCompare(b.modelo, "pt-BR"));
-  }, [vehicles, query, statusFilter, dateFrom, dateTo]);
+  }, [vehicles, query, statusFilter, soProprios]);
 
   return (
     <div className="space-y-6">
@@ -1301,7 +1294,7 @@ function StockPage({ vehicles, onSelectVehicle }: { vehicles: Vehicle[]; onSelec
           <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
             <div>
               <CardTitle>Estoque</CardTitle>
-              <CardDescription>Visual premium em cards, com filtros e navegação para o detalhe.</CardDescription>
+              <CardDescription>{filtered.length} {filtered.length === 1 ? "carro" : "carros"}{soProprios ? " próprios (Próprio e Troca)" : ""}{statusFilter !== "Todos" ? ` • ${statusFilter.toLowerCase()}` : ""}</CardDescription>
             </div>
             <div className="flex flex-col gap-3 xl:flex-row">
               <div className="flex items-center gap-2 rounded-2xl border bg-slate-50 px-3">
@@ -1322,8 +1315,17 @@ function StockPage({ vehicles, onSelectVehicle }: { vehicles: Vehicle[]; onSelec
                   ))}
                 </SelectContent>
               </Select>
-              <Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="w-[170px] rounded-2xl" />
-              <Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="w-[170px] rounded-2xl" />
+              <button
+                type="button"
+                data-testid="button-only-own"
+                aria-pressed={soProprios}
+                onClick={() => setSoProprios((x) => !x)}
+                title="Mostra só os carros da loja (Próprio e Troca), sem os consignados"
+                className={`flex h-10 items-center justify-center gap-2 rounded-2xl border px-4 text-sm font-semibold transition ${soProprios ? "border-blue-600 bg-blue-600 text-white shadow-md shadow-blue-200" : "border-slate-200 bg-white text-slate-700 hover:border-blue-300 hover:text-blue-700"}`}
+              >
+                {soProprios ? <CheckCircle2 className="h-4 w-4" /> : <Car className="h-4 w-4" />}
+                Só próprios
+              </button>
             </div>
           </div>
         </CardHeader>

@@ -32,7 +32,14 @@ Dados apagados por engano só voltam pela **cópia de segurança** (Configuraç�
 
 ---
 
-## v1.7.2 — 03/11/2026 (em teste)
+## v1.7.3 — 07/11/2026 (em teste)
+Sem mudança no banco.
+- **Estoque**: os dois campos de data (filtro por data de compra) foram retirados.
+- Novo botão **"Só próprios"**: ligado (azul), mostra só os carros da loja — Próprio e Troca —, sem os consignados.
+  Desligado, mostra todos. Funciona junto com a busca e o filtro de status.
+- O topo da lista mostra quantos carros aparecem com os filtros atuais.
+
+## v1.7.2 — 03/11/2026
 Sem mudança no banco.
 - **Despesas operacionais**: o formulário ganhou o campo **"Mês da despesa (competência)"**. Antes o mês vinha só do seletor
   no topo da tela, e despesas retroativas acabavam caindo no mês atual.
