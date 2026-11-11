@@ -1064,9 +1064,10 @@ function SalesPanel({
 }
 
 function VehicleDetailPage({
-  vehicle, expenses, onBack, onEditVehicle, onOpenExpense, onOpenSale, onDeleteVehicle, onUndoSale, onEditExpense, backLabel,
+  vehicle, expenses, onBack, onEditVehicle, onOpenExpense, onOpenSale, onDeleteVehicle, onUndoSale, onEditExpense, onUpdateSale, backLabel,
 }: {
   backLabel?: string;
+  onUpdateSale: (vehicle: Vehicle, dados: { dataVenda: string; valorVenda: number }) => Promise<boolean>;
   vehicle: Vehicle;
   expenses: Expense[];
   onBack: () => void;
@@ -1084,6 +1085,30 @@ function VehicleDetailPage({
   const valorBase = vendido ? Number(vehicle.valorVenda) : Number(vehicle.vendaPrevista || 0);
   const lucro = valorBase - totalCost;
   const desconto = vendido ? Number(vehicle.vendaPrevista || 0) - Number(vehicle.valorVenda) : 0;
+
+  // Corrigir venda: data e valor (a garantia de 90 dias acompanha a nova data)
+  const [corrigindoVenda, setCorrigindoVenda] = useState(false);
+  const [formVenda, setFormVenda] = useState({ dataVenda: "", valorVenda: "" });
+  const [salvandoVenda, setSalvandoVenda] = useState(false);
+  const abrirCorrecaoVenda = () => {
+    setFormVenda({ dataVenda: (vehicle.dataVenda || "").slice(0, 10), valorVenda: String(vehicle.valorVenda ?? "") });
+    setCorrigindoVenda(true);
+  };
+  const salvarCorrecaoVenda = async () => {
+    const valor = Number(formVenda.valorVenda);
+    if (!formVenda.dataVenda) { alert("Informe a data da venda."); return; }
+    if (!valor) { alert("Informe o valor da venda."); return; }
+    const avisos: string[] = [];
+    if (vehicle.dataCompra && formVenda.dataVenda < vehicle.dataCompra.slice(0, 10)) avisos.push(`A data da venda (${formatDateBR(formVenda.dataVenda)}) é anterior à data da compra (${formatDateBR(vehicle.dataCompra)}).`);
+    if (formVenda.dataVenda > todayISO()) avisos.push("A data da venda está no futuro.");
+    const mesAntigo = monthKey(vehicle.dataVenda);
+    if (vehicle.dataVenda && monthKey(formVenda.dataVenda) !== mesAntigo) avisos.push(`A venda vai sair de ${monthLabel(mesAntigo)} e entrar em ${monthLabel(monthKey(formVenda.dataVenda))}: o Resultado do mês e o extrato dos dois meses mudam.`);
+    if (avisos.length && !confirm(`${avisos.join("\n\n")}\n\nSalvar mesmo assim?`)) return;
+    setSalvandoVenda(true);
+    const ok = await onUpdateSale(vehicle, { dataVenda: formVenda.dataVenda, valorVenda: valor });
+    setSalvandoVenda(false);
+    if (ok) setCorrigindoVenda(false);
+  };
 
   const confirmarExclusao = () => {
     const partes = [
@@ -1121,6 +1146,11 @@ function VehicleDetailPage({
               Desfazer venda
             </Button>
           )}
+          {vendido && (
+            <Button variant="outline" className="rounded-2xl" onClick={abrirCorrecaoVenda} data-testid="button-edit-sale">
+              <Pencil className="mr-2 h-4 w-4" /> Corrigir venda
+            </Button>
+          )}
           <Button variant="outline" className="rounded-2xl" onClick={onBack} data-testid="button-back-stock">
             {backLabel || "Voltar para estoque"}
           </Button>
@@ -1137,6 +1167,29 @@ function VehicleDetailPage({
           )}
         </div>
       </div>
+
+      {corrigindoVenda && (
+        <Card className="rounded-3xl border-0 shadow-md shadow-slate-200/60 ring-2 ring-amber-300" data-testid="edit-sale-card">
+          <CardHeader>
+            <CardTitle>Corrigir venda</CardTitle>
+            <CardDescription>A garantia de 90 dias passa a contar da nova data. O carro continua vendido.</CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-4 md:grid-cols-[1fr_1fr_auto] md:items-end">
+            <div className="space-y-2">
+              <Label>Data da venda</Label>
+              <Input type="date" value={formVenda.dataVenda} onChange={(e) => setFormVenda({ ...formVenda, dataVenda: e.target.value })} data-testid="input-edit-sale-date" />
+            </div>
+            <div className="space-y-2">
+              <Label>Valor da venda (R$)</Label>
+              <Input type="number" value={formVenda.valorVenda} onChange={(e) => setFormVenda({ ...formVenda, valorVenda: e.target.value })} data-testid="input-edit-sale-value" />
+            </div>
+            <div className="flex gap-2">
+              <Button onClick={salvarCorrecaoVenda} disabled={salvandoVenda} className="rounded-2xl bg-blue-600 hover:bg-blue-700" data-testid="button-save-sale">{salvandoVenda ? "Salvando..." : "Salvar"}</Button>
+              <Button variant="outline" onClick={() => setCorrigindoVenda(false)} className="rounded-2xl">Cancelar</Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <div className="grid gap-6 xl:grid-cols-[1.9fr_0.95fr]">
         <Card className="rounded-3xl border-0 shadow-md shadow-slate-200/60">
@@ -1180,6 +1233,13 @@ function VehicleDetailPage({
                   <div className="mb-2 flex items-center gap-2 text-slate-500"><Package className="h-4 w-4" /> Pacote</div>
                   <p className="text-2xl font-semibold">{vehicle.completo}</p>
                 </div>
+                {vehicle.status === "Vendido" && (
+                  <div>
+                    <div className="mb-2 flex items-center gap-2 text-slate-500"><DollarSign className="h-4 w-4" /> Data da Venda</div>
+                    <p className="text-2xl font-semibold">{vehicle.dataVenda ? formatDateBR(vehicle.dataVenda) : "—"}</p>
+                    {vehicle.dataVenda && <p className="text-sm text-slate-500">{diffDays(vehicle.dataCompra, vehicle.dataVenda)} dias de pátio</p>}
+                  </div>
+                )}
               </div>
             </div>
             <div className="mt-8 border-t pt-8">
@@ -1218,6 +1278,10 @@ function VehicleDetailPage({
                   <div className="flex items-center justify-between text-xl">
                     <span className="text-slate-500">Vendido por</span>
                     <span className="font-semibold">{currency(vehicle.valorVenda)}</span>
+                  </div>
+                  <div className="flex items-center justify-between text-base">
+                    <span className="text-slate-500">Data da venda</span>
+                    <span className="font-semibold">{vehicle.dataVenda ? formatDateBR(vehicle.dataVenda) : "—"}</span>
                   </div>
                   {desconto !== 0 && (
                     <div className="flex items-center justify-between text-base">
@@ -2971,6 +3035,29 @@ export default function App() {
     }
   };
 
+  // Corrigir venda: muda data e valor na tabela vendas; a garantia acompanha a nova data (90 dias)
+  const handleUpdateSale = async (vehicle: Vehicle, { dataVenda, valorVenda }: { dataVenda: string; valorVenda: number }) => {
+    try {
+      const vid = Number(vehicle.id);
+      const { data: vendaAtualizada, error } = await supabase.from("vendas")
+        .update({ data_venda: dataVenda, valor_venda: valorVenda })
+        .eq("veiculo_id", vid).select("id");
+      if (error) throw error;
+      if (!vendaAtualizada?.length) throw new Error("Venda não encontrada para este veículo.");
+      const { error: gErr } = await supabase.from("garantias")
+        .update({ data_inicio: dataVenda, data_fim: addDays(dataVenda, 90) })
+        .eq("veiculo_id", vid);
+      if (gErr) throw gErr;
+      await loadData();
+      setSelectedVehicle({ ...vehicle, dataVenda, valorVenda, garantiaFim: vehicle.garantiaFim ? addDays(dataVenda, 90) : vehicle.garantiaFim });
+      return true;
+    } catch (error) {
+      console.error(error);
+      alert("Não foi possível corrigir a venda. Recarregue a página e tente de novo.");
+      return false;
+    }
+  };
+
   // Desfazer venda: apaga garantia e venda e devolve o carro ao estoque
   const handleUndoSale = async (vehicle: Vehicle) => {
     try {
@@ -3286,6 +3373,7 @@ export default function App() {
               onOpenSale={(plate) => { setSalePlatePrefill(plate); setActive("vendas"); }}
               onUndoSale={handleUndoSale}
               onEditExpense={handleStartEditExpense}
+              onUpdateSale={handleUpdateSale}
             />
           )}
 

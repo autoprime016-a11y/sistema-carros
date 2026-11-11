@@ -32,7 +32,13 @@ Dados apagados por engano só voltam pela **cópia de segurança** (Configuraç�
 
 ---
 
-## v1.8.0 — 11/11/2026 (em teste)
+## v1.8.1 — 11/11/2026 (em teste)
+Sem mudança no banco.
+- Ficha do carro vendido: **Data da Venda** (com os dias de pátio) na ficha técnica e no Resumo Financeiro.
+- Botão **"Corrigir venda"**: altera a data e o valor da venda. A garantia de 90 dias passa a contar da nova data.
+- Ao salvar, avisa (sem impedir) se a venda muda de mês (Resultado do mês e extratos mudam), fica antes da compra ou no futuro.
+
+## v1.8.0 — 11/11/2026
 Sem mudança no banco.
 
 **Nova tela "Gastos com carros"** (menu lateral)

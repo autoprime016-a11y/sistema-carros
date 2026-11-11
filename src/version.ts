@@ -2,7 +2,7 @@
 // A cada publicação: aumente APP_VERSION, acrescente a versão no topo de VERSION_HISTORY,
 // atualize "version" no package.json e registre no CHANGELOG.md.
 
-export const APP_VERSION = "1.8.0";
+export const APP_VERSION = "1.8.1";
 
 export type VersionEntry = {
   versao: string;
@@ -12,6 +12,16 @@ export type VersionEntry = {
 };
 
 export const VERSION_HISTORY: VersionEntry[] = [
+  {
+    versao: "1.8.1",
+    data: "2026-11-11",
+    titulo: "Data da venda na ficha e Corrigir venda",
+    itens: [
+      "Ficha do carro vendido mostra a data da venda e os dias de pátio",
+      "Botão \"Corrigir venda\": muda a data e o valor da venda; a garantia de 90 dias acompanha a nova data",
+      "Aviso ao corrigir quando a venda muda de mês, fica antes da compra ou no futuro (não impede)",
+    ],
+  },
   {
     versao: "1.8.0",
     data: "2026-11-11",
