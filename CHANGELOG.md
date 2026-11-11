@@ -32,7 +32,28 @@ Dados apagados por engano só voltam pela **cópia de segurança** (Configuraç�
 
 ---
 
-## v1.7.3 — 07/11/2026 (em teste)
+## v1.8.0 — 11/11/2026 (em teste)
+Sem mudança no banco.
+
+**Nova tela "Gastos com carros"** (menu lateral)
+- Mês escolhido: total gasto (com variação sobre a média dos 3 meses anteriores e média por carro), Em estoque, Custo da venda e Pós-venda.
+- Gráfico "Onde mais gastamos" por categoria (Oficina e Mecânica somadas), dividido nas três fases.
+- Evolução dos últimos 12 meses (toque na barra para abrir o mês), lista do pós-venda e os 10 carros que mais gastaram.
+- Filtro Todos / Só da loja / Consignados.
+
+**Regra das fases** (pela data da despesa comparada com a data da venda)
+- Até a venda, ou carro no pátio: **Em estoque**.
+- Depois da venda, conserto (Mecânica, Oficina, Funilaria, Elétrica, Pneus, Troca de óleo, Acessórios): **Pós-venda**.
+- Depois da venda, o resto (comissão, cartório, transferência, vistoria, tanque cheio, lavagem, outros): **Custo da venda**.
+
+**Consignados**
+- Pós-venda: 50% descontado da parte da loja e 50% da parte do proprietário.
+- Custo da venda continua por conta do proprietário, como antes.
+- Extrato: nova coluna Pós-venda. O repasse passa a ser valor do carro + despesas pagas pelo proprietário + parte dele,
+  sem devolver o pós-venda (pago pela loja). Extratos de meses com pós-venda mudam de valor.
+- O lucro do carro continua descontando todas as despesas, inclusive as de depois da venda.
+
+## v1.7.3 — 07/11/2026
 Sem mudança no banco.
 - **Estoque**: os dois campos de data (filtro por data de compra) foram retirados.
 - Novo botão **"Só próprios"**: ligado (azul), mostra só os carros da loja — Próprio e Troca —, sem os consignados.

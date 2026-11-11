@@ -2,7 +2,7 @@
 // A cada publicação: aumente APP_VERSION, acrescente a versão no topo de VERSION_HISTORY,
 // atualize "version" no package.json e registre no CHANGELOG.md.
 
-export const APP_VERSION = "1.7.3";
+export const APP_VERSION = "1.8.0";
 
 export type VersionEntry = {
   versao: string;
@@ -12,6 +12,17 @@ export type VersionEntry = {
 };
 
 export const VERSION_HISTORY: VersionEntry[] = [
+  {
+    versao: "1.8.0",
+    data: "2026-11-11",
+    titulo: "Gastos com carros e pós-venda",
+    itens: [
+      "Nova tela Gastos com carros: total do mês, por categoria (gráfico), evolução de 12 meses, pós-venda e carros que mais gastaram",
+      "Despesas separadas em Em estoque, Custo da venda (comissão, cartório, transferência etc. depois da venda) e Pós-venda (consertos depois da venda)",
+      "Filtro Todos / Só da loja / Consignados; Oficina e Mecânica somadas no gráfico",
+      "Consignados: o pós-venda é dividido 50% loja e 50% proprietário; o extrato mostra a coluna Pós-venda e o repasse não devolve esse valor ao proprietário",
+    ],
+  },
   {
     versao: "1.7.3",
     data: "2026-11-07",

@@ -5,7 +5,7 @@ import {
   Eye, CheckCircle2, CircleDollarSign, FileSpreadsheet, Share2,
   LogIn, UserCircle2, Bell, Settings, LogOut, Calculator,
   AlertTriangle, Trophy, Pencil, Megaphone, Target, Calendar,
-  Gauge, Fuel, Palette, Package, MapPin, FileText,
+  Gauge, Fuel, Palette, Package, MapPin, FileText, BarChart3,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -368,6 +368,7 @@ function AppSidebar({
     ["cadastro", "Cadastrar veículo", PlusCircle],
     ["estoque", "Estoque", Car],
     ["despesas", "Despesas", Wrench],
+    ["gastos", "Gastos com carros", BarChart3],
     ["custos", "Despesas operacionais", ClipboardList],
     ["consulta-custo", "Consulta custo", Calculator],
     ["vendas", "Registrar venda", DollarSign],
@@ -1549,19 +1550,267 @@ function ShowroomPanel({ stockVehicles, expenseByPlate }: { stockVehicles: Vehic
   );
 }
 
+// Gastos com carros: despesas dos veículos por mês (data da despesa), separadas em Em estoque × Pós-venda
+type FiltroDono = "todos" | "loja" | "consignados";
+function CarSpendingPanel({
+  expenses, vehicles, onOpenVehicle,
+}: {
+  expenses: Expense[];
+  vehicles: Vehicle[];
+  onOpenVehicle: (v: Vehicle) => void;
+}) {
+  const porId = useMemo(() => new Map(vehicles.map((v) => [Number(v.id), v])), [vehicles]);
+  const [filtro, setFiltro] = useState<FiltroDono>("todos");
+
+  // Cada despesa com o carro, a fase e a categoria de análise
+  const itens = useMemo(() => expenses
+    .map((e) => {
+      const v = porId.get(Number(e.veiculoId));
+      return { e, v, mes: monthKey(e.data), fase: faseDaDespesa(e, v), cat: categoriaGasto(e.categoria), valor: Number(e.valor || 0) };
+    })
+    .filter((x) => x.mes && x.mes !== "sem-data")
+    .filter((x) => filtro === "todos" || (filtro === "loja" ? grupoDaOrigem(x.v?.origem) === "loja" : grupoDaOrigem(x.v?.origem) !== "loja")),
+  [expenses, porId, filtro]);
+
+  const meses = useMemo(() => {
+    const set = new Set(expenses.map((e) => monthKey(e.data)).filter((k) => k && k !== "sem-data"));
+    set.add(monthKey(todayISO()));
+    return [...set].sort((a, b) => b.localeCompare(a));
+  }, [expenses]);
+  const [mes, setMes] = useState(monthKey(todayISO()));
+
+  const doMes = itens.filter((x) => x.mes === mes);
+  const soma = (lista: typeof itens) => lista.reduce((a, x) => a + x.valor, 0);
+  const total = soma(doMes);
+  const emEstoque = doMes.filter((x) => x.fase === "Em estoque");
+  const custoVenda = doMes.filter((x) => x.fase === "Custo da venda");
+  const posVenda = doMes.filter((x) => x.fase === "Pós-venda");
+  const carrosNoMes = new Set(doMes.map((x) => x.e.veiculoId)).size;
+  const carrosPos = new Set(posVenda.map((x) => x.e.veiculoId)).size;
+
+  // Comparação com a média dos 3 meses anteriores
+  const anteriores = [mesAnterior(mes), mesAnterior(mesAnterior(mes)), mesAnterior(mesAnterior(mesAnterior(mes)))];
+  const mediaAnterior = anteriores.reduce((a, m) => a + soma(itens.filter((x) => x.mes === m)), 0) / 3;
+  const variacao = mediaAnterior > 0 ? ((total - mediaAnterior) / mediaAnterior) * 100 : null;
+
+  // Por categoria (maior para menor), com a divisão estoque × pós-venda
+  const categorias = [...new Set(doMes.map((x) => x.cat))]
+    .map((cat) => {
+      const daCat = doMes.filter((x) => x.cat === cat);
+      return { cat, total: soma(daCat), estoque: soma(daCat.filter((x) => x.fase === "Em estoque")), venda: soma(daCat.filter((x) => x.fase === "Custo da venda")), pos: soma(daCat.filter((x) => x.fase === "Pós-venda")), qtd: daCat.length };
+    })
+    .sort((a, b) => b.total - a.total);
+  const maiorCat = categorias[0]?.total || 1;
+
+  // Últimos 12 meses até o mês escolhido
+  const ultimos: string[] = [];
+  let m = mes;
+  for (let i = 0; i < 12; i++) { ultimos.unshift(m); m = mesAnterior(m); }
+  const serie = ultimos.map((mm) => {
+    const doM = itens.filter((x) => x.mes === mm);
+    return { mes: mm, estoque: soma(doM.filter((x) => x.fase === "Em estoque")), venda: soma(doM.filter((x) => x.fase === "Custo da venda")), pos: soma(doM.filter((x) => x.fase === "Pós-venda")) };
+  });
+  const maiorMes = Math.max(1, ...serie.map((x) => x.estoque + x.venda + x.pos));
+  const mesCurto = (mm: string) => {
+    const [a, n] = mm.split("-");
+    return `${["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"][Number(n) - 1]}/${a.slice(2)}`;
+  };
+
+  // Carros que mais gastaram no mês
+  const porCarro = [...new Set(doMes.map((x) => x.e.veiculoId))]
+    .map((id) => {
+      const doCarro = doMes.filter((x) => x.e.veiculoId === id);
+      return { v: doCarro[0].v, placa: doCarro[0].e.placa, total: soma(doCarro), pos: soma(doCarro.filter((x) => x.fase === "Pós-venda")), qtd: doCarro.length };
+    })
+    .sort((a, b) => b.total - a.total);
+
+  const pct = (parte: number) => (total ? Math.round((parte / total) * 100) : 0);
+
+  return (
+    <div className="space-y-6">
+      <Card className="rounded-3xl border-0 bg-blue-50 shadow-md shadow-slate-200/60 ring-2 ring-blue-300">
+        <CardContent className="flex flex-col gap-4 p-5 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <p className="text-sm font-medium text-blue-700">Gastos com carros</p>
+            <p className="text-lg font-semibold text-slate-900">{monthLabel(mes)} • {currency(total)}</p>
+            <p className="text-xs text-slate-500">Despesas lançadas nos carros, pela data da despesa. Depois da venda: conserto = pós-venda; comissão, cartório, transferência etc. = custo da venda.</p>
+          </div>
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <div className="flex rounded-2xl border border-blue-200 bg-white p-1 text-sm font-medium">
+              {([["todos", "Todos"], ["loja", "Só da loja"], ["consignados", "Consignados"]] as const).map(([k, rot]) => (
+                <button key={k} type="button" onClick={() => setFiltro(k)} className={`rounded-xl px-3 py-1.5 transition ${filtro === k ? "bg-blue-600 text-white" : "text-slate-600 hover:text-blue-700"}`}>{rot}</button>
+              ))}
+            </div>
+            <Select value={mes} onValueChange={setMes}>
+              <SelectTrigger className="w-full rounded-2xl border-blue-300 bg-white sm:w-[220px]" data-testid="select-spending-month"><SelectValue /></SelectTrigger>
+              <SelectContent className="max-h-72 overflow-y-auto">
+                {meses.map((mm) => <SelectItem key={mm} value={mm}>{monthLabel(mm)}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+        </CardContent>
+      </Card>
+
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <Card className="rounded-3xl border-0 shadow-md shadow-slate-200/60"><CardContent className="p-5">
+          <p className="text-sm text-slate-500">Total gasto no mês</p>
+          <p className="mt-1 text-2xl font-bold">{currency(total)}</p>
+          <p className="text-xs text-slate-500">
+            {doMes.length} lançamento(s) em {carrosNoMes} carro(s) • média {currency(carrosNoMes ? total / carrosNoMes : 0)} por carro
+            {variacao !== null && <span className={variacao > 0 ? "text-red-600" : "text-emerald-600"}> • {variacao > 0 ? "+" : ""}{Math.round(variacao)}% vs média dos 3 meses anteriores</span>}
+          </p>
+        </CardContent></Card>
+        <Card className="rounded-3xl border-0 shadow-md shadow-slate-200/60"><CardContent className="p-5">
+          <p className="text-sm text-slate-500">Em estoque</p>
+          <p className="mt-1 text-2xl font-bold text-blue-700">{currency(soma(emEstoque))}</p>
+          <p className="text-xs text-slate-500">{pct(soma(emEstoque))}% do mês • preparação e manutenção no pátio</p>
+        </CardContent></Card>
+        <Card className="rounded-3xl border-0 shadow-md shadow-slate-200/60"><CardContent className="p-5">
+          <p className="text-sm text-slate-500">Pós-venda</p>
+          <p className="mt-1 text-2xl font-bold text-orange-600">{currency(soma(posVenda))}</p>
+          <p className="text-xs text-slate-500">{pct(soma(posVenda))}% do mês • consertos em {carrosPos} carro(s) já vendido(s)</p>
+        </CardContent></Card>
+        <Card className="rounded-3xl border-0 shadow-md shadow-slate-200/60"><CardContent className="p-5">
+          <p className="text-sm text-slate-500">Custo da venda</p>
+          <p className="mt-1 text-2xl font-bold text-violet-700">{currency(soma(custoVenda))}</p>
+          <p className="text-xs text-slate-500">{pct(soma(custoVenda))}% do mês • comissão, cartório, transferência e outros depois da venda</p>
+        </CardContent></Card>
+      </div>
+
+      <div className="grid gap-6 xl:grid-cols-2">
+        <Card className="rounded-3xl border-0 shadow-md shadow-slate-200/60">
+          <CardHeader>
+            <CardTitle>Onde mais gastamos</CardTitle>
+            <CardDescription>Por categoria, em {monthLabel(mes)}. <span className="text-blue-700">Azul</span> = em estoque, <span className="text-violet-700">roxo</span> = custo da venda, <span className="text-orange-600">laranja</span> = pós-venda. Oficina e Mecânica somadas.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {categorias.length === 0 && <p className="text-sm text-slate-500">Nenhuma despesa de carro lançada neste mês.</p>}
+            {categorias.map((c) => (
+              <div key={c.cat}>
+                <div className="mb-1 flex items-baseline justify-between gap-3 text-sm">
+                  <span className="font-medium">{c.cat} <span className="text-xs font-normal text-slate-400">({c.qtd})</span></span>
+                  <span className="font-semibold tabular-nums">{currency(c.total)} <span className="text-xs font-normal text-slate-400">{pct(c.total)}%</span></span>
+                </div>
+                <div className="flex h-3 overflow-hidden rounded-full bg-slate-100" style={{ width: `${Math.max(4, (c.total / maiorCat) * 100)}%` }}>
+                  <div className="h-full bg-blue-600" style={{ width: `${(c.estoque / c.total) * 100}%` }} />
+                  <div className="h-full bg-violet-500" style={{ width: `${(c.venda / c.total) * 100}%` }} />
+                  <div className="h-full bg-orange-500" style={{ width: `${(c.pos / c.total) * 100}%` }} />
+                </div>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+
+        <Card className="rounded-3xl border-0 shadow-md shadow-slate-200/60">
+          <CardHeader>
+            <CardTitle>Evolução — últimos 12 meses</CardTitle>
+            <CardDescription>Total gasto por mês. Toque numa barra para ver o mês.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="flex h-56 items-end gap-1.5">
+              {serie.map((x) => {
+                const tot = x.estoque + x.venda + x.pos;
+                return (
+                  <button key={x.mes} type="button" onClick={() => setMes(x.mes)} title={`${monthLabel(x.mes)}: ${currency(tot)} (estoque ${currency(x.estoque)}, custo da venda ${currency(x.venda)}, pós-venda ${currency(x.pos)})`}
+                    className={`group flex h-full flex-1 flex-col items-center justify-end gap-1 rounded-lg ${x.mes === mes ? "bg-blue-50" : ""}`}>
+                    <span className="text-[10px] tabular-nums text-slate-500">{tot ? `${Math.round(tot / 1000)}k` : ""}</span>
+                    <div className="flex w-full max-w-[34px] flex-col justify-end overflow-hidden rounded-t-md" style={{ height: `${(tot / maiorMes) * 80}%` }}>
+                      <div className="w-full bg-orange-500" style={{ height: `${tot ? (x.pos / tot) * 100 : 0}%` }} />
+                      <div className="w-full bg-violet-500" style={{ height: `${tot ? (x.venda / tot) * 100 : 0}%` }} />
+                      <div className={`w-full flex-1 ${x.mes === mes ? "bg-blue-700" : "bg-blue-500 group-hover:bg-blue-600"}`} />
+                    </div>
+                    <span className={`text-[10px] ${x.mes === mes ? "font-bold text-blue-700" : "text-slate-500"}`}>{mesCurto(x.mes)}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="grid gap-6 xl:grid-cols-2">
+        <Card className="rounded-3xl border-0 shadow-md shadow-slate-200/60">
+          <CardHeader>
+            <CardTitle>Pós-venda do mês</CardTitle>
+            <CardDescription>Consertos em carros já vendidos (garantia). Nos consignados, metade sai da parte da loja e metade da parte do proprietário.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {posVenda.length === 0 && <p className="text-sm text-slate-500">Nenhum conserto de pós-venda neste mês.</p>}
+            {[...posVenda].sort((a, b) => b.valor - a.valor).map((x) => (
+              <button key={x.e.id} type="button" onClick={() => x.v && onOpenVehicle(x.v)} className="flex w-full items-center justify-between gap-3 rounded-2xl border border-orange-100 bg-orange-50/60 p-3 text-left hover:border-orange-300">
+                <div className="min-w-0">
+                  <p className="font-semibold">{x.v ? `${x.v.marca} ${x.v.modelo}` : x.e.placa} <span className="text-xs font-normal text-slate-500">{x.e.placa}</span></p>
+                  <p className="text-xs text-slate-500">
+                    {x.e.categoria}{x.e.descricao ? ` — ${x.e.descricao}` : ""} • {formatDateBR(x.e.data)}
+                    {x.v?.dataVenda ? ` • ${diffDays(x.v.dataVenda, x.e.data)} dias após a venda` : ""}
+                    {x.v && grupoDaOrigem(x.v.origem) !== "loja" ? ` • ${x.v.origem}` : ""}
+                  </p>
+                </div>
+                <p className="font-semibold text-orange-600 tabular-nums">{currency(x.valor)}</p>
+              </button>
+            ))}
+          </CardContent>
+        </Card>
+
+        <Card className="rounded-3xl border-0 shadow-md shadow-slate-200/60">
+          <CardHeader>
+            <CardTitle>Carros que mais gastaram no mês</CardTitle>
+            <CardDescription>Toque no carro para abrir a ficha.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {porCarro.length === 0 && <p className="text-sm text-slate-500">Nenhum gasto neste mês.</p>}
+            {porCarro.slice(0, 10).map((c, i) => (
+              <button key={c.placa + i} type="button" onClick={() => c.v && onOpenVehicle(c.v)} className="flex w-full items-center justify-between gap-3 rounded-2xl border border-slate-100 bg-slate-50 p-3 text-left hover:border-blue-300">
+                <div className="flex min-w-0 items-center gap-3">
+                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-slate-200 text-xs font-bold text-slate-600">{i + 1}</span>
+                  <div className="min-w-0">
+                    <p className="truncate font-semibold">{c.v ? `${c.v.marca} ${c.v.modelo}` : c.placa}</p>
+                    <p className="text-xs text-slate-500">{c.placa} • {c.qtd} lançamento(s){c.v ? ` • ${c.v.status}` : ""}{c.pos ? ` • pós-venda ${currency(c.pos)}` : ""}</p>
+                  </div>
+                </div>
+                <p className="font-semibold tabular-nums">{currency(c.total)}</p>
+              </button>
+            ))}
+          </CardContent>
+        </Card>
+      </div>
+    </div>
+  );
+}
+
 // Resultado do mês: vendidos, lucro e divisão entre a loja e os proprietários
 type DivisaoLucro = Record<GrupoLucro, number>;
 const divisaoVazia = (): DivisaoLucro => ({ loja: 0, carlesci: 0, givaldo: 0, outros: 0, definir: 0 });
 
 // Próprio/Troca: 100% loja. Consignado com lucro: 50/50. Consignado com prejuízo: tudo do proprietário.
 // "A definir": consignado sem proprietário escolhido (o lucro todo fica separado até corrigir).
-function dividirLucro(grupo: GrupoLucro, lucro: number): DivisaoLucro {
+// Pós-venda de consignado (despesa com data depois da venda): 50% sai da parte da loja e 50% da parte do proprietário.
+// "lucro" já vem com todas as despesas descontadas (inclusive pós-venda); "posVenda" é só a parte depois da venda.
+function dividirLucro(grupo: GrupoLucro, lucro: number, posVenda = 0): DivisaoLucro {
   const d = divisaoVazia();
-  if (grupo === "loja" || grupo === "definir") d[grupo] = lucro;
-  else if (lucro > 0) { d.loja = lucro / 2; d[grupo] = lucro / 2; }
-  else d[grupo] = lucro;
+  if (grupo === "loja" || grupo === "definir") { d[grupo] = lucro; return d; }
+  const base = lucro + posVenda; // lucro até a entrega do carro
+  if (base > 0) { d.loja = base / 2; d[grupo] = base / 2; }
+  else d[grupo] = base;
+  d.loja -= posVenda / 2;
+  d[grupo] -= posVenda / 2;
   return d;
 }
+
+// Fase da despesa:
+// - "Em estoque": até a data da venda (ou carro ainda no pátio)
+// - "Pós-venda": conserto depois da venda (garantia) — Mecânica/Oficina, Funilaria, Elétrica, Pneus, Troca de óleo, Acessórios
+// - "Custo da venda": demais gastos depois da venda (comissão, cartório, transferência, vistoria, tanque cheio, lavagem...)
+// Nos consignados, só o "Pós-venda" é dividido 50/50; o custo da venda continua por conta do proprietário.
+type FaseDespesa = "Em estoque" | "Custo da venda" | "Pós-venda";
+const CATEGORIAS_CONSERTO = ["Mecânica", "Oficina", "Funilaria", "Elétrica", "Pneus", "Troca de óleo", "Acessórios"];
+const faseDaDespesa = (e: Expense, v?: Vehicle): FaseDespesa => {
+  const depoisDaVenda = v && v.status === "Vendido" && v.dataVenda && (e.data || "").slice(0, 10) > v.dataVenda.slice(0, 10);
+  if (!depoisDaVenda) return "Em estoque";
+  return CATEGORIAS_CONSERTO.includes(e.categoria) ? "Pós-venda" : "Custo da venda";
+};
+// Na análise de gastos, "Oficina" e "Mecânica" contam juntas
+const categoriaGasto = (c: string) => (c === "Oficina" ? "Mecânica" : c || "Outros");
 
 const COR_GRUPO: Record<GrupoLucro, string> = {
   loja: "bg-blue-600", carlesci: "bg-violet-600", givaldo: "bg-teal-600", outros: "bg-slate-500", definir: "bg-amber-500",
@@ -1574,13 +1823,16 @@ function OwnerStatement({
 }: {
   dono: GrupoLucro;
   mes: string;
-  linhas: { v: Vehicle; lucro: number; parte: number; valor: number; despesas: number }[];
+  linhas: { v: Vehicle; lucro: number; parte: number; valor: number; despesas: number; posVenda: number }[];
   emEstoque: Vehicle[];
   onClose?: () => void;
 }) {
   const [aviso, setAviso] = useState("");
   const ordenadas = [...linhas].sort((a, b) => (a.v.dataVenda || "").localeCompare(b.v.dataVenda || ""));
-  const repasse = (l: { valor: number; lucro: number; parte: number }) => l.valor - (l.lucro - l.parte);
+  // Repasse = valor do carro + despesas pagas pelo proprietário (antes da venda) + parte dele no lucro.
+  // O pós-venda é pago pela loja e já está descontado 50/50 no lucro de cada um.
+  const repasse = (l: { v: Vehicle; despesas: number; parte: number }) => Number(l.v.compra || 0) + l.despesas + l.parte;
+  const temPosVenda = linhas.some((l) => l.posVenda > 0);
   const soma = (f: (l: (typeof linhas)[number]) => number) => ordenadas.reduce((a, l) => a + f(l), 0);
   const nome = NOME_GRUPO[dono];
 
@@ -1610,17 +1862,17 @@ function OwnerStatement({
 
       autoTable(doc, {
         startY: 36,
-        head: [["Carro", "Placa", "Venda em", "Venda", "Valor do carro", "Despesas", "Lucro", "Parte do proprietário", "Repasse"]],
+        head: [["Carro", "Placa", "Venda em", "Venda", "Valor do carro", "Despesas", "Pós-venda", "Lucro", "Parte do proprietário", "Repasse"]],
         body: ordenadas.map((l) => [
           t(`${l.v.marca} ${l.v.modelo}`), l.v.placa, formatDateBR(l.v.dataVenda),
-          brl(l.valor), brl(Number(l.v.compra || 0)), brl(l.despesas), brl(l.lucro), brl(l.parte), brl(repasse(l)),
+          brl(l.valor), brl(Number(l.v.compra || 0)), brl(l.despesas), brl(l.posVenda), brl(l.lucro), brl(l.parte), brl(repasse(l)),
         ]),
         foot: [["Total", "", "", brl(soma((l) => l.valor)), brl(soma((l) => Number(l.v.compra || 0))), brl(soma((l) => l.despesas)),
-          brl(soma((l) => l.lucro)), brl(soma((l) => l.parte)), brl(soma(repasse))]],
+          brl(soma((l) => l.posVenda)), brl(soma((l) => l.lucro)), brl(soma((l) => l.parte)), brl(soma(repasse))]],
         styles: { fontSize: 9, cellPadding: 2 },
         headStyles: { fillColor: [37, 99, 235] },
         footStyles: { fillColor: [241, 245, 249], textColor: 20, fontStyle: "bold" },
-        columnStyles: { 3: { halign: "right" }, 4: { halign: "right" }, 5: { halign: "right" }, 6: { halign: "right" }, 7: { halign: "right" }, 8: { halign: "right", fontStyle: "bold" } },
+        columnStyles: { 3: { halign: "right" }, 4: { halign: "right" }, 5: { halign: "right" }, 6: { halign: "right" }, 7: { halign: "right" }, 8: { halign: "right" }, 9: { halign: "right", fontStyle: "bold" } },
       });
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -1628,8 +1880,9 @@ function OwnerStatement({
       doc.setFontSize(9);
       doc.setTextColor(90);
       const notas = [
-        "Repasse = venda - parte da loja (valor do carro + despesas pagas pelo proprietário + parte dele no lucro).",
-        "Lucro = venda - valor do carro - despesas. Com lucro, 50% para a loja e 50% para o proprietário; com prejuízo, o valor fica com o proprietário.",
+        "Repasse = valor do carro + despesas pagas pelo proprietário (antes da venda) + parte dele no lucro.",
+        "Lucro = venda - valor do carro - despesas - pós-venda. Até a venda: com lucro, 50% para a loja e 50% para o proprietário; com prejuízo, o valor fica com o proprietário.",
+        "Pós-venda (gastos depois da venda, pagos pela loja): 50% descontado da parte da loja e 50% da parte do proprietário.",
       ];
       if (emEstoque.length) notas.push(`Em estoque: ${emEstoque.map((v) => `${v.modelo} (${v.placa})`).join(", ")}`);
       notas.forEach((n) => {
@@ -1679,6 +1932,7 @@ function OwnerStatement({
                   <th className="px-2 py-2 font-semibold">Venda</th>
                   <th className="px-2 py-2 font-semibold">Valor do carro</th>
                   <th className="px-2 py-2 font-semibold">Despesas</th>
+                  {temPosVenda && <th className="px-2 py-2 font-semibold">Pós-venda</th>}
                   <th className="px-2 py-2 font-semibold">Lucro</th>
                   <th className="px-2 py-2 font-semibold">Parte do proprietário</th>
                   <th className="py-2 pl-2 font-semibold">Repasse</th>
@@ -1694,6 +1948,7 @@ function OwnerStatement({
                     <td className="px-2 py-2">{currency(l.valor)}</td>
                     <td className="px-2 py-2">{currency(l.v.compra)}</td>
                     <td className="px-2 py-2">{currency(l.despesas)}</td>
+                    {temPosVenda && <td className="px-2 py-2 text-orange-600">{l.posVenda ? currency(l.posVenda) : "—"}</td>}
                     <td className={`px-2 py-2 ${l.lucro >= 0 ? "text-emerald-600" : "text-red-600"}`}>{currency(l.lucro)}</td>
                     <td className="px-2 py-2">{currency(l.parte)}</td>
                     <td className="py-2 pl-2 font-bold">{currency(repasse(l))}</td>
@@ -1706,6 +1961,7 @@ function OwnerStatement({
                   <td className="px-2 py-2">{currency(soma((l) => l.valor))}</td>
                   <td className="px-2 py-2">{currency(soma((l) => Number(l.v.compra || 0)))}</td>
                   <td className="px-2 py-2">{currency(soma((l) => l.despesas))}</td>
+                  {temPosVenda && <td className="px-2 py-2">{currency(soma((l) => l.posVenda))}</td>}
                   <td className="px-2 py-2">{currency(soma((l) => l.lucro))}</td>
                   <td className="px-2 py-2">{currency(soma((l) => l.parte))}</td>
                   <td className="py-2 pl-2">{currency(soma(repasse))}</td>
@@ -1715,7 +1971,7 @@ function OwnerStatement({
           </div>
         )}
         <p className="text-xs text-slate-500">
-          Repasse = venda − parte da loja, ou seja: valor do carro + despesas pagas pelo proprietário + parte dele no lucro. As despesas saem do lucro antes da divisão. Com prejuízo, a loja não fica com nada e o proprietário recebe o valor da venda.
+          Repasse = valor do carro + despesas pagas pelo proprietário (antes da venda) + parte dele no lucro. As despesas saem do lucro antes da divisão; com prejuízo até a venda, a loja não fica com nada. Pós-venda (gasto depois da venda, pago pela loja): metade sai da parte da loja e metade da parte do proprietário.
         </p>
         {emEstoque.length > 0 && (
           <p className="text-xs text-slate-500"><strong>Em estoque:</strong> {emEstoque.map((v) => `${v.modelo} (${v.placa})`).join(", ")}</p>
@@ -1726,12 +1982,13 @@ function OwnerStatement({
 }
 
 function ResultPanel({
-  vehicles, custoVeiculo, onEditVehicle, onOpenVehicle, custos, statusCustos,
+  vehicles, custoVeiculo, posVendaVeiculo, onEditVehicle, onOpenVehicle, custos, statusCustos,
 }: {
   custos: CustoOperacional[];
   statusCustos: StatusCustos;
   vehicles: Vehicle[];
   custoVeiculo: (v: Vehicle) => number;
+  posVendaVeiculo: (v: Vehicle) => number;
   onEditVehicle: (v: Vehicle) => void;
   onOpenVehicle: (v: Vehicle) => void;
 }) {
@@ -1752,7 +2009,8 @@ function ResultPanel({
   const linhas = doMes.map((v) => {
     const grupo = grupoDaOrigem(v.origem);
     const lucro = valorVenda(v) - custoVeiculo(v);
-    return { v, grupo, lucro, div: dividirLucro(grupo, lucro) };
+    const posVenda = posVendaVeiculo(v);
+    return { v, grupo, lucro, posVenda, div: dividirLucro(grupo, lucro, posVenda) };
   });
   const total = divisaoVazia();
   linhas.forEach(({ div }) => (Object.keys(total) as GrupoLucro[]).forEach((k) => { total[k] += div[k]; }));
@@ -1884,7 +2142,7 @@ function ResultPanel({
         <OwnerStatement
           dono={dono}
           mes={mes}
-          linhas={linhas.filter((l) => l.grupo === dono).map((l) => ({ v: l.v, lucro: l.lucro, parte: l.div[dono], valor: valorVenda(l.v), despesas: custoVeiculo(l.v) - Number(l.v.compra || 0) }))}
+          linhas={linhas.filter((l) => l.grupo === dono).map((l) => ({ v: l.v, lucro: l.lucro, parte: l.div[dono], valor: valorVenda(l.v), despesas: custoVeiculo(l.v) - Number(l.v.compra || 0) - l.posVenda, posVenda: l.posVenda }))}
           emEstoque={vehicles.filter((v) => v.status !== "Vendido" && grupoDaOrigem(v.origem) === dono)}
           onClose={() => setDono(null)}
         />
@@ -2464,6 +2722,16 @@ export default function App() {
     return map;
   }, [expenses]);
   const custoVeiculo = (v: Vehicle) => Number(v.compra || 0) + (custoTotalPorPlaca.get(v.placa) || 0);
+  // Pós-venda de cada carro vendido: despesas com data depois da data da venda
+  const posVendaPorPlaca = useMemo(() => {
+    const porId = new Map(vehicles.map((v) => [Number(v.id), v]));
+    const map = new Map<string, number>();
+    expenses.forEach((e) => {
+      if (faseDaDespesa(e, porId.get(Number(e.veiculoId))) === "Pós-venda") map.set(e.placa, (map.get(e.placa) || 0) + Number(e.valor || 0));
+    });
+    return map;
+  }, [expenses, vehicles]);
+  const posVendaVeiculo = (v: Vehicle) => posVendaPorPlaca.get(v.placa) || 0;
   const cadastroIncompleto = (v: Vehicle) => !Number(v.compra) || !Number(v.vendaPrevista);
 
   // Vendas do período: filtradas pela DATA DA VENDA
@@ -2493,7 +2761,7 @@ export default function App() {
     const margemRealizada = totalVendido > 0 ? (lucroRealizado / totalVendido) * 100 : 0;
 
     // Parte da loja: próprios/trocas 100%; consignados 50% do lucro (0 se prejuízo); "a definir" fica de fora
-    const parteLoja = (v: Vehicle, lucro: number) => dividirLucro(grupoDaOrigem(v.origem), lucro).loja;
+    const parteLoja = (v: Vehicle, lucro: number) => dividirLucro(grupoDaOrigem(v.origem), lucro, v.status === "Vendido" ? posVendaVeiculo(v) : 0).loja;
     const lucroPrevistoLoja = completos.reduce((sum, v) => sum + parteLoja(v, Number(v.vendaPrevista || 0) - custoVeiculo(v)), 0);
     const margemPrevistaLoja = vendaPrevistaCompletos > 0 ? (lucroPrevistoLoja / vendaPrevistaCompletos) * 100 : 0;
     const lucroLoja = soldInPeriod.reduce((sum, v) => sum + parteLoja(v, valorVendido(v) - custoVeiculo(v)), 0);
@@ -2941,6 +3209,14 @@ export default function App() {
             </div>
           )}
 
+          {active === "gastos" && (
+            <CarSpendingPanel
+              expenses={expenses}
+              vehicles={vehicles}
+              onOpenVehicle={(v) => { setSelectedVehicle(v); setActive("estoque"); window.scrollTo({ top: 0 }); }}
+            />
+          )}
+
           {active === "custos" && <OperatingCostsPanel custos={custos} status={statusCustos} onReload={loadCustos} />}
 
           {active === "resultado" && (
@@ -2949,6 +3225,7 @@ export default function App() {
               statusCustos={statusCustos}
               vehicles={vehicles}
               custoVeiculo={custoVeiculo}
+              posVendaVeiculo={posVendaVeiculo}
               onEditVehicle={(v) => { setEditingVehicle(v); setVoltarParaResultado(true); setActive("cadastro"); window.scrollTo({ top: 0 }); }}
               onOpenVehicle={(v) => { setSelectedVehicle(v); setVoltarParaResultado(true); setActive("estoque"); window.scrollTo({ top: 0 }); }}
             />
